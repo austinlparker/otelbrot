@@ -1,0 +1,97 @@
+@startuml "Resource Allocation"
+' Explicitly set diagram type
+skinparam componentStyle rectangle
+
+package "Resource Specifications" {
+  frame "UI Pod" as UIPodRes {
+    [CPU Request: 0.5 cores] as UICPUReq
+    [CPU Limit: 1 core] as UICPULim
+    [Memory Request: 1GB] as UIMemReq
+    [Memory Limit: 2GB] as UIMemLim
+  }
+  
+  frame "Orchestrator Pod" as OrchPodRes {
+    [CPU Request: 2 cores] as OrchCPUReq
+    [CPU Limit: 4 cores] as OrchCPULim
+    [Memory Request: 4GB] as OrchMemReq
+    [Memory Limit: 6GB] as OrchMemLim
+  }
+  
+  frame "Redis Pod" as RedisPodRes {
+    [CPU Request: 1 core] as RedisCPUReq
+    [CPU Limit: 2 cores] as RedisCPULim
+    [Memory Request: 4GB] as RedisMemReq
+    [Memory Limit: 6GB] as RedisMemLim
+    [Storage: 10GB PVC] as RedisDisk
+  }
+  
+  frame "Worker Pod" as WorkerPodRes {
+    [CPU Request: 1 core (exact)] as WorkerCPUReq
+    [CPU Limit: 1 core (exact)] as WorkerCPULim
+    [Memory Request: 2GB] as WorkerMemReq
+    [Memory Limit: 2GB] as WorkerMemLim
+  }
+  
+  frame "OpenTelemetry Collector" as OTelPodRes {
+    [CPU Request: 1 core] as OTelCPUReq
+    [CPU Limit: 2 cores] as OTelCPULim
+    [Memory Request: 2GB] as OTelMemReq
+    [Memory Limit: 4GB] as OTelMemLim
+  }
+  
+  frame "Grafana OTEL-LGTM" as GrafanaPodRes {
+    [CPU Request: 2 cores] as GrafanaCPUReq
+    [CPU Limit: 4 cores] as GrafanaCPULim
+    [Memory Request: 4GB] as GrafanaMemReq
+    [Memory Limit: 8GB] as GrafanaMemLim
+    [Storage: 10GB PVC] as GrafanaDisk
+  }
+}
+
+package "Priority Classes" {
+  [system-node-critical: 2000000000] as SystemCritical
+  [system-cluster-critical: 1000000000] as ClusterCritical
+  [fractal-preview-priority: 900000] as PreviewPriority
+  [fractal-detail-priority: 500000] as DetailPriority
+  [default: 0] as DefaultPriority
+}
+
+package "Worker Scaling Model" {
+  frame "Dynamic Worker Creation" {
+    [Max Workers = Available CPU Cores] as MaxWorkers
+    [Preview Workers = 1] as PreviewWorkers
+    [Detail Workers = Cores - 6] as DetailWorkers
+  }
+  
+  note bottom of MaxWorkers
+    Total worker count limited by
+    available CPU cores to demonstrate
+    single-core-per-worker model
+  end note
+  
+  note bottom of DetailWorkers
+    Reserve 6 cores for system components:
+    - 1 for UI
+    - 4 for Orchestrator
+    - 1 for OTel
+  end note
+  
+  frame "Pod Anti-Affinity" {
+    [Worker-to-Worker Anti-Affinity] as AntiAffinity
+  }
+}
+
+' Priority relationships
+SystemCritical -[hidden]- ClusterCritical
+ClusterCritical -[hidden]- PreviewPriority
+PreviewPriority -[hidden]- DetailPriority
+DetailPriority -[hidden]- DefaultPriority
+
+PreviewPriority --> PreviewWorkers : assigned to
+DetailPriority --> DetailWorkers : assigned to
+
+' Resource constraints
+MaxWorkers --> WorkerPodRes : each has
+AntiAffinity --> WorkerPodRes : enforces
+
+@enduml

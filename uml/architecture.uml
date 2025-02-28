@@ -1,0 +1,78 @@
+@startuml "Application Architecture"
+' Explicitly set diagram type
+skinparam componentStyle rectangle
+
+' Simplified color definitions
+!define SPRING_COLOR #6DB33F
+!define DENO_COLOR #000000
+!define REDIS_COLOR #F8CECC
+!define OTEL_COLOR #4287f5
+
+package "Frontend (Deno)" as FE {
+  [FractalExplorer] as FEMain
+  [Canvas Renderer] as Canvas
+  [WebSocket Client] as WSClient
+  [Tile Manager] as TileManager
+  [Control Panel] as Controls
+  [View State] as ViewState
+}
+
+package "Orchestrator" as Orch {
+  [Fractal Controller] as RestAPI
+  [WebSocket Service] as WSService
+  [Job Manager] as JobManager
+  [Tile Registry] as TileRegistry
+  [K8s Job Creator] as K8sClient
+}
+
+package "Worker" as Worker {
+  [Fractal Calculator] as Calculator
+  [Result Sender] as ResultSender
+  [Color Mapper] as ColorMapper
+}
+
+database "Redis" as Redis {
+  [Job Data] as JobData
+  [Tile Data] as TileData
+  [PubSub Channels] as PubSub
+}
+
+cloud "OpenTelemetry" as OTel {
+  [OTel API] as OTelAPI
+  [OTel Collector] as OTelCollector
+}
+
+' Frontend internal relationships
+FEMain --> Canvas
+FEMain --> WSClient
+FEMain --> TileManager
+FEMain --> Controls
+FEMain --> ViewState
+
+' Backend internal relationships
+RestAPI --> JobManager
+RestAPI --> TileRegistry
+WSService --> PubSub
+JobManager --> K8sClient
+JobManager --> JobData
+TileRegistry --> TileData
+
+' Worker internal relationships
+Calculator --> ColorMapper
+ResultSender --> RestAPI
+
+' Cross-component relationships
+WSClient ..> WSService
+ResultSender ..> TileRegistry
+K8sClient ..> Worker
+JobManager ..> PubSub
+WSService ..> WSClient
+
+' Telemetry
+FEMain ..> OTelAPI
+RestAPI ..> OTelAPI
+JobManager ..> OTelAPI
+Calculator ..> OTelAPI
+OTelAPI --> OTelCollector
+
+@enduml

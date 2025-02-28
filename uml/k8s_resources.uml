@@ -1,0 +1,80 @@
+@startuml "Kubernetes Resources"
+' Explicitly set diagram type
+skinparam componentStyle rectangle
+
+package "fractal-demo Namespace" {
+  package "Core Resources" {
+    [Deployment: fractal-ui] as UIDeploy
+    [Deployment: fractal-orchestrator] as OrchDeploy
+    [StatefulSet: redis] as RedisStateful
+    [Job Template: fractal-worker] as WorkerTemplate
+    [ConfigMap: fractal-config] as FractalConfig
+    [Secret: redis-auth] as RedisSecret
+    [PersistentVolumeClaim: redis-data] as RedisPVC
+    [Service: fractal-ui] as UISvc
+    [Service: fractal-orchestrator] as OrchSvc
+    [Service: redis] as RedisSvc
+  }
+  
+  package "OpenTelemetry Resources" {
+    [OpenTelemetryCollector: fractal-collector] as OtelCollector
+    [Instrumentation: fractal-java-instrumentation] as JavaInstr
+    [Instrumentation: fractal-js-instrumentation] as JSInstr
+    [Service: otel-collector] as OtelSvc
+  }
+  
+  package "Visualization" {
+    [Deployment: grafana-otel-lgtm] as GrafanaDeploy
+    [Service: grafana-otel-lgtm] as GrafanaSvc
+    [PersistentVolumeClaim: grafana-data] as GrafanaPVC
+  }
+  
+  package "Worker Jobs (Dynamic)" {
+    [Job: fractal-worker-preview-*] as PreviewJobs
+    [Job: fractal-worker-detail-*] as DetailJobs
+  }
+  
+  package "Priority Classes" {
+    [PriorityClass: fractal-preview-priority] as PreviewPriority
+    [PriorityClass: fractal-detail-priority] as DetailPriority
+  }
+}
+
+' Service connections
+UIDeploy -- UISvc : exposes
+OrchDeploy -- OrchSvc : exposes
+RedisStateful -- RedisSvc : exposes
+OtelCollector -- OtelSvc : exposes
+GrafanaDeploy -- GrafanaSvc : exposes
+
+' Configuration connections
+UIDeploy -- FractalConfig : mounts
+OrchDeploy -- FractalConfig : mounts
+WorkerTemplate -- FractalConfig : mounts
+RedisStateful -- RedisSecret : uses
+RedisStateful -- RedisPVC : uses
+GrafanaDeploy -- GrafanaPVC : uses
+
+' OpenTelemetry connections
+JavaInstr -- OrchDeploy : instruments
+JavaInstr -- WorkerTemplate : instruments
+JSInstr -- UIDeploy : instruments
+OtelCollector -- GrafanaDeploy : sends data to
+
+' Job relationships
+WorkerTemplate -- PreviewJobs : creates
+WorkerTemplate -- DetailJobs : creates
+PreviewJobs -- PreviewPriority : uses
+DetailJobs -- DetailPriority : uses
+
+' Network flow
+UISvc <-- "Users" : access
+UISvc --> OrchSvc : API calls
+OrchSvc --> RedisSvc : state storage
+OrchSvc --> OtelSvc : telemetry
+PreviewJobs --> OrchSvc : submit results
+DetailJobs --> OrchSvc : submit results
+PreviewJobs --> OtelSvc : telemetry
+DetailJobs --> OtelSvc : telemetry
+
+@enduml

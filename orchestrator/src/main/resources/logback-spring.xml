@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!-- Use Spring Boot's defaults as a base -->
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+    
+    <!-- Common appender shared across environments -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %5p ${PID:- } [%t] --- %-40.40logger{39} : %m%n%wex</pattern>
+            <charset>utf8</charset>
+        </encoder>
+    </appender>
+
+    <!-- Development profile: Colorized, detailed output -->
+    <springProfile name="dev">
+        <appender name="DEV_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <pattern>%d{HH:mm:ss.SSS} %highlight(%-5level) [%thread] %cyan(%logger{36}) - %msg%n</pattern>
+                <charset>utf8</charset>
+            </encoder>
+        </appender>
+        
+        <root level="INFO">
+            <appender-ref ref="DEV_CONSOLE" />
+        </root>
+        
+        <logger name="io.aparker.otelbrot" level="DEBUG"/>
+        <logger name="org.springframework.web" level="INFO"/>
+    </springProfile>
+
+    <!-- Production profile: More concise output, warnings and errors only for app code -->
+    <springProfile name="prod">
+        <root level="INFO">
+            <appender-ref ref="CONSOLE" />
+        </root>
+        
+        <!-- Application specific loggers -->
+        <logger name="io.aparker.otelbrot" level="WARN"/>
+        
+        <!-- Framework loggers -->
+        <logger name="org.springframework" level="WARN"/>
+        <logger name="org.hibernate" level="WARN"/>
+        <logger name="io.fabric8.kubernetes" level="WARN"/>
+        <logger name="io.opentelemetry" level="WARN"/>
+        <logger name="io.netty" level="WARN"/>
+        <logger name="org.apache" level="WARN"/>
+    </springProfile>
+    
+    <!-- You can add other profiles as needed, for example, a 'staging' profile -->
+</configuration>

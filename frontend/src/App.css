@@ -1,0 +1,7 @@
+.App {
+  width: 100%;
+  min-height: 100vh;
+  padding: 20px 0;
+  background-color: var(--background-color);
+  background-image: linear-gradient(to bottom right, rgba(245, 168, 0, 0.05), rgba(66, 92, 199, 0.05));
+}

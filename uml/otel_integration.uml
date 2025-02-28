@@ -1,0 +1,110 @@
+@startuml "OpenTelemetry Integration"
+' Explicitly set diagram type
+skinparam componentStyle rectangle
+
+package "OpenTelemetry Operator" as OTelOperator {
+  [OTel Operator Controller] as OperatorController
+  [Webhook Server] as Webhook
+}
+
+note right of OperatorController
+  Manages OTel resources:
+  - Collectors
+  - Instrumentations
+end note
+
+note right of Webhook
+  Injects auto-instrumentation
+  via pod mutation webhook
+end note
+
+package "Custom Resources" as CRs {
+  frame "OpenTelemetryCollector" as CollectorCR {
+    [Mode: Deployment]
+    [Receivers: OTLP]
+    [Processors: Batch, Resource]
+    [Exporters: OTLP, Logging]
+  }
+  
+  frame "Instrumentation (Java)" as JavaInstrCR {
+    [Resource: Deployment]
+    [Sampler: ParentBasedAlways]
+    [Image: auto-instrumentation]
+    [Env: OTel SDK settings]
+  }
+  
+  frame "Instrumentation (JS)" as JSInstrCR {
+    [Resource: Deployment]
+    [Framework: 'deno']
+    [Npm Packages: OTel SDK]
+    [Env: OTel SDK settings]
+  }
+}
+
+package "Applications" as Apps {
+  [UI Pod (Deno)] as UIPod
+  [Orchestrator Pod (Spring Boot)] as OrchPod
+  [Worker Pods (Spring Boot)] as WorkerPods
+}
+
+note right of UIPod
+  import { trace } from '@opentelemetry/api';
+  const tracer = trace.getTracer('fractal-ui');
+  const span = tracer.startSpan('zoom-operation');
+end note
+
+note right of OrchPod
+  import io.opentelemetry.api.trace.Tracer;
+  
+  @Traced("create_render_job")
+  public String createRenderJob(...) {
+    // Logic
+  }
+end note
+
+package "OpenTelemetry Collector" as OTelCollector {
+  [OTLP Receivers] as OTLPReceivers
+  [Batch Processor] as BatchProcessor
+  [Resource Processor] as ResourceProcessor
+  [OTLP Exporter] as OTLPExporter
+}
+
+package "Grafana OTEL-LGTM" as GrafanaLGTM {
+  [Prometheus] as Prometheus
+  [Tempo] as Tempo
+  [Loki] as Loki
+  [Grafana Dashboards] as Dashboards
+}
+
+note right of Dashboards
+  - Fractal Demo Overview
+  - Worker Performance
+  - User Experience Metrics
+  - Trace Explorer
+  - Log Explorer
+end note
+
+' Management flows
+OperatorController --> CollectorCR : manages
+OperatorController --> JavaInstrCR : manages
+OperatorController --> JSInstrCR : manages
+OperatorController --> OTelCollector : deploys
+Webhook --> UIPod : injects JS instrumentation
+Webhook --> OrchPod : injects Java agent
+Webhook --> WorkerPods : injects Java agent
+
+' Telemetry flows
+UIPod --> OTLPReceivers : sends traces & metrics
+OrchPod --> OTLPReceivers : sends traces & metrics
+WorkerPods --> OTLPReceivers : sends traces & metrics
+OTLPReceivers --> BatchProcessor : forwards telemetry
+BatchProcessor --> ResourceProcessor : forwards telemetry
+ResourceProcessor --> OTLPExporter : forwards telemetry
+OTLPExporter --> Prometheus : sends metrics
+OTLPExporter --> Tempo : sends traces
+OTLPExporter --> Loki : sends logs
+Prometheus --> Dashboards : provides metrics
+Tempo --> Dashboards : provides traces
+Loki --> Dashboards : provides logs
+
+@enduml

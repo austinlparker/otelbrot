@@ -1,0 +1,174 @@
+@startuml "Entity Relationship Diagram"
+' Explicitly set diagram type
+skinparam classStyle rectangle
+
+package "API Entities" {
+  class RenderRequest {
+    +double centerX
+    +double centerY
+    +double zoom
+    +int maxIterations
+    +int width
+    +int height
+    +String colorScheme
+  }
+  
+  class FractalJob {
+    +String jobId
+    +double centerX
+    +double centerY
+    +double zoom
+    +int maxIterations
+    +int width
+    +int height
+    +String colorScheme
+    +JobStatus status
+    +ZonedDateTime createdAt
+    +ZonedDateTime updatedAt
+    +int completedTiles
+    +int totalTiles
+  }
+  
+  class TileSpec {
+    +String jobId
+    +String tileId
+    +double xMin
+    +double yMin
+    +double xMax
+    +double yMax
+    +int width
+    +int height
+    +int maxIterations
+    +String colorScheme
+    +int pixelStartX
+    +int pixelStartY
+  }
+  
+  class TileResult {
+    +String jobId
+    +String tileId
+    +int width
+    +int height
+    +byte[] imageData
+    +int pixelStartX
+    +int pixelStartY
+    +long calculationTimeMs
+    +TileStatus status
+  }
+  
+  enum JobStatus {
+    CREATED
+    PROCESSING
+    PREVIEW_READY
+    COMPLETED
+    FAILED
+    CANCELLED
+  }
+  
+  enum TileStatus {
+    PENDING
+    PROCESSING
+    COMPLETED
+    FAILED
+  }
+}
+
+package "WebSocket Messages" {
+  class BaseMessage {
+    +String type
+    +String jobId
+  }
+  
+  class TileMessage {
+    +String type = "tile"
+    +String tileId
+    +int x
+    +int y
+    +int width
+    +int height
+    +String imageDataBase64
+  }
+  
+  class ProgressMessage {
+    +String type = "progress"
+    +double progress
+    +int completedTiles
+    +int totalTiles
+    +long elapsedTimeMs
+  }
+  
+  class ErrorMessage {
+    +String type = "error"
+    +String errorCode
+    +String message
+  }
+}
+
+package "Frontend State" {
+  class ViewState {
+    +double centerX
+    +double centerY
+    +double zoom
+    +int maxIterations
+    +String colorScheme
+    +String currentJobId
+    +Map<String, ImageData> tileCache
+  }
+  
+  class RenderState {
+    +String currentJobId
+    +double progress
+    +int completedTiles
+    +int totalTiles
+    +boolean isLoading
+    +String errorMessage
+    +long elapsedTimeMs
+  }
+}
+
+package "Redis Data Model" {
+  class RedisJobHash {
+    +key = "job:{jobId}"
+    +Map<String, String> fields
+  }
+  
+  class RedisTileHash {
+    +key = "tile:{jobId}:{tileId}"
+    +Map<String, String> fields
+  }
+  
+  class RedisTileData {
+    +key = "tiledata:{jobId}:{tileId}"
+    +byte[] value
+  }
+  
+  class RedisPubSubChannel {
+    +channel = "job_updates:{jobId}"
+    +channel = "tile_updates:{jobId}"
+  }
+}
+
+' Relationships
+RenderRequest --> FractalJob : creates
+FractalJob --> TileSpec : generates multiple
+TileSpec --> TileResult : produces
+FractalJob "1" *-- "many" TileResult : contains
+FractalJob --> JobStatus : has
+TileResult --> TileStatus : has
+
+BaseMessage <|-- TileMessage : extends
+BaseMessage <|-- ProgressMessage : extends
+BaseMessage <|-- ErrorMessage : extends
+
+FractalJob --> RedisJobHash : stored as
+TileResult --> RedisTileHash : metadata stored as
+TileResult --> RedisTileData : image stored as
+TileResult --> TileMessage : converted to
+FractalJob --> ProgressMessage : status converted to
+FractalJob --> RedisPubSubChannel : updates published on
+
+TileMessage --> ViewState : updates
+ProgressMessage --> RenderState : updates
+ErrorMessage --> RenderState : updates error in
+
+@enduml

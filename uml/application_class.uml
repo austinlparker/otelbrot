@@ -1,0 +1,138 @@
+@startuml "Application Class Diagram"
+' Explicitly set diagram type
+skinparam classStyle rectangle
+
+package "Frontend (TypeScript)" {
+  class FractalExplorer {
+    -canvas: HTMLCanvasElement
+    -ctx: CanvasRenderingContext2D
+    -ws: WebSocket
+    -viewState: ViewState
+    -renderState: RenderState
+    -tileManager: TileManager
+    +constructor()
+    +setupWebSocket()
+    +requestRender()
+    +handleZoom(x, y, factor)
+    +handleTileUpdate(data)
+    +updateProgress(progress)
+  }
+  
+  class TileManager {
+    -tileCache: Map<String, ImageData>
+    -pendingTiles: Set<String>
+    +addTile(tileMessage)
+    +hasTile(tileId)
+    +clearCache()
+    +getTileImage(tileId)
+  }
+  
+  class ViewState {
+    +centerX: number
+    +centerY: number
+    +zoom: number
+    +maxIterations: number
+    +colorScheme: String
+    +currentJobId: String
+  }
+  
+  class RenderState {
+    +progress: number
+    +completedTiles: number
+    +totalTiles: number
+    +isLoading: boolean
+    +errorMessage: String
+  }
+}
+
+package "Orchestrator (Java Spring Boot)" {
+  class FractalController {
+    -orchestrationService: OrchestrationService
+    -webSocketService: WebSocketService
+    +initiateRender(request)
+    +receiveTileResult(result)
+    +getStatus(jobId)
+    +cancelJob(jobId)
+  }
+  
+  class OrchestrationService {
+    -kubernetesClient: KubernetesClient
+    -jobRepository: JobRepository
+    -meterRegistry: MeterRegistry
+    +createRenderJob(params)
+    -createPreviewJob(jobId, params)
+    -createDetailJobs(jobId, params)
+    +processTileResult(result)
+    +getJobStatus(jobId)
+    +cancelJob(jobId)
+  }
+  
+  class WebSocketService {
+    -redisTemplate: RedisTemplate
+    -sessionRegistry: Map<String, WebSocketSession>
+    +registerSession(sessionId, session)
+    +removeSession(sessionId)
+    +handleMessage(session, message)
+    +sendTileUpdate(tileResult)
+    +sendProgressUpdate(jobId, progress)
+  }
+  
+  class JobRepository {
+    -redisTemplate: RedisTemplate
+    +save(job)
+    +findById(jobId)
+    +updateProgress(jobId, completed, total)
+    +updateStatus(jobId, status)
+  }
+  
+  class TileRepository {
+    -redisTemplate: RedisTemplate
+    +saveTileResult(result)
+    +findTilesByJobId(jobId)
+    +getTileImage(jobId, tileId)
+  }
+}
+
+package "Worker (Java Spring Boot)" {
+  class FractalWorkerApplication {
+    +main(args)
+    +commandLineRunner()
+  }
+  
+  class FractalCalculator {
+    -meterRegistry: MeterRegistry
+    -tracer: Tracer
+    +calculateTile(spec)
+    -calculateMandelbrot(cx, cy, maxIter)
+    -applyColorMapping(iterations, scheme)
+  }
+  
+  class ResultSender {
+    -restTemplate: RestTemplate
+    -orchestratorUrl: String
+    +sendResult(result)
+  }
+  
+  class ColorMapper {
+    +CLASSIC: ColorFunction
+    +FIRE: ColorFunction
+    +OCEAN: ColorFunction
+    +applyColorMap(iterations, maxIter, scheme)
+  }
+}
+
+' Relationships
+FractalExplorer "1" *-- "1" TileManager
+FractalExplorer "1" *-- "1" ViewState
+FractalExplorer "1" *-- "1" RenderState
+
+FractalController "1" *-- "1" OrchestrationService
+FractalController "1" *-- "1" WebSocketService
+OrchestrationService "1" *-- "1" JobRepository
+OrchestrationService "1" *-- "1" TileRepository
+
+FractalWorkerApplication "1" *-- "1" FractalCalculator
+FractalWorkerApplication "1" *-- "1" ResultSender
+FractalCalculator "1" *-- "1" ColorMapper
+
+@enduml

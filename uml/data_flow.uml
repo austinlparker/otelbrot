@@ -1,0 +1,86 @@
+@startuml "Data Flow Diagram"
+' Explicitly set diagram type
+skinparam sequenceArrowThickness 1
+skinparam sequenceGroupBackgroundColor transparent
+
+actor User
+participant "Frontend" as UI
+participant "WebSocket Service" as WS
+participant "Orchestrator" as Orch
+participant "Redis" as Redis
+participant "Worker" as Worker
+database "OpenTelemetry" as OTel
+
+== Fractal Rendering Sequence ==
+
+User -> UI: Initiate zoom
+activate UI
+
+UI -> UI: Calculate new coordinates
+UI -> Orch: POST /api/fractal/render
+activate Orch
+
+Orch -> OTel: Start render trace
+Orch -> Redis: Store job metadata
+activate Redis
+Redis --> Orch: Acknowledge
+deactivate Redis
+
+Orch -> Orch: Partition into tiles
+Orch -> Orch: Create worker jobs
+Orch --> UI: Return jobId
+deactivate Orch
+
+UI -> WS: Subscribe to job updates
+activate WS
+WS -> Redis: SUBSCRIBE job_updates
+WS -> Redis: SUBSCRIBE tile_updates
+WS --> UI: Connection established
+deactivate WS
+
+activate Worker
+Worker -> OTel: Start tile calculation trace
+Worker -> Worker: Calculate fractal data
+Worker -> Worker: Apply color mapping
+
+Worker -> Orch: POST /api/tile-result
+activate Orch
+Orch -> OTel: Update trace with tile completion
+Orch -> Redis: Store tile result
+Orch -> Redis: PUBLISH tile_updates
+Orch --> Worker: Acknowledge
+deactivate Orch
+Worker -> OTel: End tile calculation trace
+deactivate Worker
+
+Redis -> WS: Message from tile_updates
+activate WS
+WS -> UI: Send tile update message
+deactivate WS
+
+UI -> UI: Place tile on canvas
+UI -> UI: Update progress indicator
+
+loop Until all tiles complete
+  Worker -> Orch: POST /api/tile-result (next tile)
+  activate Orch
+  Orch -> Redis: Store tile result
+  Orch -> Redis: PUBLISH tile_updates
+  Orch -> Redis: Update job progress
+  Orch -> Redis: PUBLISH job_updates
+  Orch --> Worker: Acknowledge
+  deactivate Orch
+  
+  Redis -> WS: Message from job_updates
+  activate WS
+  WS -> UI: Send progress update
+  deactivate WS
+  
+  UI -> UI: Update progress display
+end
+
+Orch -> OTel: Complete render trace
+UI -> UI: Finalize rendering
+deactivate UI
+
+@enduml

@@ -1,0 +1,99 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orchestrator
+  namespace: otelbrot
+  labels:
+    app: orchestrator
+  annotations:
+    instrumentation.opentelemetry.io/inject-java: "otelbrot/java-agent"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: orchestrator
+  template:
+    metadata:
+      labels:
+        app: orchestrator
+      annotations:
+        instrumentation.opentelemetry.io/inject-java: "otelbrot/java-agent"
+    spec:
+      serviceAccountName: orchestrator-sa
+      volumes:
+      - name: otel-agent-config-volume
+        configMap:
+          name: otel-agent-config
+      containers:
+      - name: orchestrator
+        image: otelbrot/orchestrator:latest
+        imagePullPolicy: Always  # Use locally built image
+        ports:
+        - containerPort: 8080
+        env:
+        - name: SPRING_DATA_REDIS_HOST
+          value: "redis"
+        - name: SPRING_DATA_REDIS_PORT
+          value: "6379"
+        - name: SPRING_PROFILES_ACTIVE
+          value: "dev"
+        - name: OTEL_SERVICE_NAME
+          value: "otelbrot-orchestrator"
+        - name: OTEL_EXPERIMENTAL_CONFIG_FILE
+          value: "/etc/otel/otel-agent-config.yaml"
+        volumeMounts:
+        - name: otel-agent-config-volume
+          mountPath: /etc/otel
+        resources:
+          requests:
+            cpu: 500m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 768Mi
+        readinessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8080
+          initialDelaySeconds: 30
+          timeoutSeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8080
+          initialDelaySeconds: 60
+          timeoutSeconds: 5
+          periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orchestrator
+  namespace: otelbrot
+  labels:
+    app: orchestrator
+spec:
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: orchestrator
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: orchestrator-db-init
+  namespace: otelbrot
+spec:
+  ttlSecondsAfterFinished: 100
+  template:
+    spec:
+      containers:
+      - name: wait-for-redis
+        image: busybox:1.28
+        command: ['/bin/sh', '-c', 'until nc -z redis 6379; do echo waiting for redis; sleep 2; done; echo "Redis is up"']
+      restartPolicy: OnFailure

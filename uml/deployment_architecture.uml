@@ -1,0 +1,99 @@
+@startuml "Deployment Architecture"
+' Explicitly set diagram type
+skinparam componentStyle rectangle
+
+cloud "Kubernetes Cluster" {
+  node "ARM Node 1" {
+    rectangle "ARM64 Multi-Core CPU" {
+      card "[Core 1]" as Core1_1
+      card "[Core 2]" as Core1_2
+      card "[Core 3]" as Core1_3
+      card "[Core 4]" as Core1_4
+      card "[Core 5..16]" as Core1_rest
+    }
+    
+    rectangle "Pods" {
+      frame "UI Pod" as UIPod {
+        [Deno Server]
+      }
+      
+      frame "Orchestrator Pod" as OrchPod {
+        [Spring Boot App]
+        [WebSocket Service]
+      }
+      
+      frame "Redis Pod" as RedisPod {
+        [Redis Server]
+      }
+      
+      frame "Worker Pod 1" as Worker1 {
+        [Fractal Calculator]
+      }
+      
+      frame "Worker Pod 2" as Worker2 {
+        [Fractal Calculator]
+      }
+    }
+  }
+  
+  node "ARM Node 2" {
+    rectangle "ARM64 Multi-Core CPU" {
+      card "[Core 1]" as Core2_1
+      card "[Core 2]" as Core2_2
+      card "[Core 3]" as Core2_3
+      card "[Core 4]" as Core2_4
+      card "[Core 5..16]" as Core2_rest
+    }
+    
+    rectangle "Pods" {
+      frame "OTel Collector Pod" as OTelPod {
+        [OpenTelemetry Collector]
+      }
+      
+      frame "Grafana OTEL-LGTM Pod" as GrafanaPod {
+        [Grafana Server]
+        [Prometheus]
+        [Tempo]
+        [Loki]
+      }
+      
+      frame "Worker Pod 3" as Worker3 {
+        [Fractal Calculator]
+      }
+      
+      frame "Worker Pod 4" as Worker4 {
+        [Fractal Calculator]
+      }
+    }
+  }
+}
+
+' CPU Affinity
+Worker1 -- Core1_1 : pinned to
+Worker2 -- Core1_2 : pinned to
+Worker3 -- Core2_1 : pinned to
+Worker4 -- Core2_2 : pinned to
+
+' Network Connections
+UIPod -- OrchPod : REST API
+UIPod -- OrchPod : WebSocket
+OrchPod -- RedisPod : Data Storage
+OrchPod -- Worker1 : Create & Monitor
+OrchPod -- Worker2 : Create & Monitor
+OrchPod -- Worker3 : Create & Monitor
+OrchPod -- Worker4 : Create & Monitor
+Worker1 -- OrchPod : Submit Results
+Worker2 -- OrchPod : Submit Results
+Worker3 -- OrchPod : Submit Results
+Worker4 -- OrchPod : Submit Results
+
+' Telemetry
+UIPod -- OTelPod : Send Traces & Metrics
+OrchPod -- OTelPod : Send Traces & Metrics
+Worker1 -- OTelPod : Send Traces & Metrics
+Worker2 -- OTelPod : Send Traces & Metrics
+Worker3 -- OTelPod : Send Traces & Metrics
+Worker4 -- OTelPod : Send Traces & Metrics
+OTelPod -- GrafanaPod : Forward Telemetry
+
+@enduml
