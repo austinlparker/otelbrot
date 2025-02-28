@@ -406,9 +406,17 @@ public class OrchestrationService {
             logger.warn("No current span found when creating worker job");
         }
         
-        // Create a span for this operation, ensuring we use the current context
+        // Always make our spans have valid trace IDs by using a new context if the current one is invalid
+        Context parentContext = currentContext;
+        if (currentSpan == null || currentSpan.equals(Span.getInvalid())) {
+            // Create a completely new trace
+            parentContext = Context.root();
+            logger.warn("Creating new trace for worker job - no parent context available");
+        }
+        
+        // Create a span for this operation with a valid parent context
         Span span = tracer.spanBuilder("OrchestrationService.createWorkerJob")
-                .setParent(currentContext)
+                .setParent(parentContext)
                 .setAttribute("service.name", "otelbrot-orchestrator")
                 .setAttribute("job.id", tileSpec.getJobId())
                 .setAttribute("tile.id", tileSpec.getTileId())
@@ -474,7 +482,7 @@ public class OrchestrationService {
                                 .addNewContainer()
                                     .withName("worker")
                                     .withImage(workerImage)
-                                    .withImagePullPolicy("Always")
+                                    .withImagePullPolicy("IfNotPresent")
                                     .addNewEnv()
                                         .withName("TILE_SPEC_JOB_ID")
                                         .withValue(tileSpec.getJobId())
@@ -524,24 +532,14 @@ public class OrchestrationService {
                                         .withValue(String.valueOf(tileSpec.getPixelStartY()))
                                     .endEnv()
                                     
-                                    // Add OpenTelemetry trace context to enable distributed tracing
-                                    // Create a custom traceparent manually to ensure it has the exact span ID we want
+                                    // Add OpenTelemetry trace context using W3C standard environment variables
                                     .addNewEnv()
-                                        .withName("OTEL_TRACE_PARENT")
-                                        .withValue(createTraceParentWithSpanId(span.getSpanContext().getTraceId(), span.getSpanContext().getSpanId()))
+                                        .withName("TRACEPARENT")
+                                        .withValue(getTraceParentFromSpan(span))
                                     .endEnv()
                                     .addNewEnv()
-                                        .withName("OTEL_TRACE_STATE")
-                                        .withValue("")
-                                    .endEnv()
-                                    // Also set the TileSpec trace context for backwards compatibility
-                                    .addNewEnv()
-                                        .withName("TILE_SPEC_TRACE_PARENT")
-                                        .withValue(createTraceParentWithSpanId(span.getSpanContext().getTraceId(), span.getSpanContext().getSpanId()))
-                                    .endEnv()
-                                    .addNewEnv()
-                                        .withName("TILE_SPEC_TRACE_STATE")
-                                        .withValue("")
+                                        .withName("TRACESTATE")
+                                        .withValue(getTraceStateFromSpan(span))
                                     .endEnv()
                                     .withNewResources()
                                         .addToRequests("cpu", new io.fabric8.kubernetes.api.model.Quantity(workerCpuRequest))
@@ -647,68 +645,70 @@ public class OrchestrationService {
     }
 
     /**
-     * Create a W3C trace parent header with specific trace ID and span ID
-     * This is a much more direct approach that guarantees the exact span ID is used
+     * Get the W3C traceparent from the current context
      */
-    private String createTraceParentWithSpanId(String traceId, String spanId) {
-        // Format: 00-[trace-id]-[span-id]-01
-        String traceParent = String.format("00-%s-%s-01", traceId, spanId);
+    private String getTraceparent() {
+        // Create a carrier for context propagation
+        Map<String, String> carrier = new HashMap<>();
         
-        logger.info("Created custom trace parent: {}", traceParent);
-        logger.info("  - Using trace ID: {}", traceId);
-        logger.info("  - Using span ID:  {}", spanId);
-        
-        return traceParent;
+        try {
+            // Get the current span to check if it's valid
+            Span currentSpan = Span.current();
+            if (currentSpan == null || currentSpan.equals(Span.getInvalid())) {
+                logger.warn("No valid span found when getting trace context");
+            } else {
+                logger.info("Current span to extract context from: traceId={}, spanId={}",
+                    currentSpan.getSpanContext().getTraceId(),
+                    currentSpan.getSpanContext().getSpanId());
+            }
+            
+            // Use the standard OTel propagator to inject the current context
+            Context currentContext = Context.current();
+            propagator.inject(currentContext, carrier, (c, k, v) -> c.put(k, v));
+            
+            String traceparent = carrier.getOrDefault("traceparent", "");
+            if (traceparent.isEmpty()) {
+                logger.warn("No traceparent found in carrier after injection!");
+            } else {
+                logger.info("Successfully extracted traceparent: {}", traceparent);
+            }
+            
+            // Log what we're injecting for debugging
+            logger.debug("Full carrier contents: {}", carrier);
+            
+            // Return the traceparent value (standard W3C key)
+            return traceparent;
+        } catch (Exception e) {
+            logger.error("Error getting traceparent", e);
+            return "";
+        }
     }
     
     /**
-     * Extract trace parent from a specific span - this is a key fix for context propagation
-     * Instead of using the current span from the thread, we use the specific span that's starting the job
+     * Extract trace parent from a specific span using the OpenTelemetry API
+     * Creates standard W3C traceparent format from the span context
      */
     private String getTraceParentFromSpan(Span span) {
         if (span == null || span.equals(Span.getInvalid())) {
             logger.warn("Invalid span when extracting trace parent");
-            return null;
+            return "";
         }
-        
-        // Create a context with this specific span (not Context.current())
-        Context spanContext = Context.current().with(span);
         
         // Create a carrier to extract the trace context
         Map<String, String> carrier = new HashMap<>();
         
-        // Use the span-specific context for trace propagation
+        // Create a context with this specific span and inject it into the carrier
+        Context spanContext = Context.current().with(span);
         propagator.inject(spanContext, carrier, (c, k, v) -> c.put(k, v));
         
-        String traceParent = carrier.get("traceparent");
+        String traceparent = carrier.get("traceparent");
+        logger.debug("Extracted traceparent: {}", traceparent);
         
-        if (traceParent != null) {
-            // Parse and log trace parent details
-            try {
-                if (traceParent.contains("-")) {
-                    String[] parts = traceParent.split("-");
-                    if (parts.length >= 4) {
-                        String version = parts[0];
-                        String traceId = parts[1];
-                        String parentSpanId = parts[2];
-                        String flags = parts[3];
-                        
-                        logger.info("Span trace parent: version={}, traceId={}, spanId={}, flags={}",
-                            version, traceId, parentSpanId, flags);
-                    }
-                }
-            } catch (Exception e) {
-                logger.warn("Failed to parse traceparent: {}", traceParent, e);
-            }
-        } else {
-            logger.warn("Failed to extract traceparent - distributed tracing will be broken");
-        }
-        
-        return traceParent;
+        return traceparent != null ? traceparent : "";
     }
     
     /**
-     * Extract trace state from a specific span
+     * Extract trace state from a specific span using the OpenTelemetry API
      */
     private String getTraceStateFromSpan(Span span) {
         if (span == null || span.equals(Span.getInvalid())) {
@@ -716,19 +716,17 @@ public class OrchestrationService {
             return "";
         }
         
-        // Create a context with this specific span
-        Context spanContext = Context.current().with(span);
-        
         // Create a carrier to extract the trace context
         Map<String, String> carrier = new HashMap<>();
         
-        // Use the span-specific context for trace propagation
+        // Create a context with this specific span and inject it into the carrier
+        Context spanContext = Context.current().with(span);
         propagator.inject(spanContext, carrier, (c, k, v) -> c.put(k, v));
         
-        String traceState = carrier.get("tracestate");
-        logger.info("Span trace state: {}", traceState);
+        String tracestate = carrier.get("tracestate");
+        logger.debug("Extracted tracestate: {}", tracestate);
         
-        return traceState != null ? traceState : "";
+        return tracestate != null ? tracestate : "";
     }
     
     /**
@@ -823,7 +821,8 @@ public class OrchestrationService {
                 int actualTileWidth = Math.min(tileWidth, width - pixelStartX);
                 int actualTileHeight = Math.min(tileHeight, height - pixelStartY);
                 
-                TileSpec tileSpec = new TileSpec.Builder()
+                // Create tile with trace propagation data
+                TileSpec.Builder tileSpecBuilder = new TileSpec.Builder()
                         .jobId(jobId)
                         .tileId(UUID.randomUUID().toString())
                         .xMin(tileXMin)
@@ -835,8 +834,12 @@ public class OrchestrationService {
                         .maxIterations(maxIterations)
                         .colorScheme(colorScheme)
                         .pixelStartX(pixelStartX)
-                        .pixelStartY(pixelStartY)
-                        .build();
+                        .pixelStartY(pixelStartY);
+                
+                // Not setting trace context in TileSpec anymore - using environment variables
+                // Context propagation happens when the Kubernetes job is created
+                
+                TileSpec tileSpec = tileSpecBuilder.build();
                 
                 tiles.add(tileSpec);
             }

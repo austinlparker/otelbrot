@@ -21,8 +21,7 @@ public class TileSpec {
     private String colorScheme;
     private int pixelStartX;
     private int pixelStartY;
-    private String traceParent;
-    private String traceState;
+    // Not storing trace context in TileSpec anymore - using environment variables instead
 
     // Default constructor for Jackson deserialization
     public TileSpec() {
@@ -41,9 +40,7 @@ public class TileSpec {
             @JsonProperty("maxIterations") int maxIterations,
             @JsonProperty("colorScheme") String colorScheme,
             @JsonProperty("pixelStartX") int pixelStartX,
-            @JsonProperty("pixelStartY") int pixelStartY,
-            @JsonProperty("traceParent") String traceParent,
-            @JsonProperty("traceState") String traceState) {
+            @JsonProperty("pixelStartY") int pixelStartY) {
         this.jobId = jobId;
         this.tileId = tileId;
         this.xMin = xMin;
@@ -56,8 +53,6 @@ public class TileSpec {
         this.colorScheme = colorScheme;
         this.pixelStartX = pixelStartX;
         this.pixelStartY = pixelStartY;
-        this.traceParent = traceParent;
-        this.traceState = traceState;
     }
     
     private TileSpec(Builder builder) {
@@ -73,8 +68,6 @@ public class TileSpec {
         this.colorScheme = builder.colorScheme;
         this.pixelStartX = builder.pixelStartX;
         this.pixelStartY = builder.pixelStartY;
-        this.traceParent = builder.traceParent;
-        this.traceState = builder.traceState;
     }
 
     // Static factory method to create from environment variables
@@ -111,26 +104,7 @@ public class TileSpec {
                 .pixelStartX(Integer.parseInt(pixelStartXStr))
                 .pixelStartY(Integer.parseInt(pixelStartYStr));
                 
-        // Add trace context if available
-        // Check both OTEL_TRACE_PARENT (standard) and TILE_SPEC_TRACE_PARENT (our custom env var)
-        String traceParent = System.getenv("OTEL_TRACE_PARENT");
-        if (traceParent == null) {
-            traceParent = System.getenv("TILE_SPEC_TRACE_PARENT");
-        }
-        
-        if (traceParent != null) {
-            builder.traceParent(traceParent);
-            
-            // Also check both standard and custom env vars for trace state
-            String traceState = System.getenv("OTEL_TRACE_STATE");
-            if (traceState == null) {
-                traceState = System.getenv("TILE_SPEC_TRACE_STATE");
-            }
-            
-            if (traceState != null) {
-                builder.traceState(traceState);
-            }
-        }
+        // Not adding trace context to TileSpec anymore - using environment variables directly
         
         return builder.build();
     }
@@ -232,21 +206,7 @@ public class TileSpec {
         this.pixelStartY = pixelStartY;
     }
     
-    public String getTraceParent() {
-        return traceParent;
-    }
-    
-    public void setTraceParent(String traceParent) {
-        this.traceParent = traceParent;
-    }
-    
-    public String getTraceState() {
-        return traceState;
-    }
-    
-    public void setTraceState(String traceState) {
-        this.traceState = traceState;
-    }
+    // Trace context is now handled via environment variables, not stored in TileSpec
 
     @Override
     public boolean equals(Object o) {
@@ -276,9 +236,6 @@ public class TileSpec {
         private String colorScheme;
         private int pixelStartX;
         private int pixelStartY;
-        private String traceParent;
-        private String traceState;
-
         public Builder jobId(String jobId) {
             this.jobId = jobId;
             return this;
@@ -336,16 +293,6 @@ public class TileSpec {
 
         public Builder pixelStartY(int pixelStartY) {
             this.pixelStartY = pixelStartY;
-            return this;
-        }
-        
-        public Builder traceParent(String traceParent) {
-            this.traceParent = traceParent;
-            return this;
-        }
-        
-        public Builder traceState(String traceState) {
-            this.traceState = traceState;
             return this;
         }
 
