@@ -1,6 +1,6 @@
 # OTEL-Monte Makefile
 
-.PHONY: test test-frontend test-orchestrator test-worker clean build docker-build deploy run-worker install-cert-manager install-otel-operator install-dependencies create-honeycomb-secret create-namespace
+.PHONY: test test-frontend test-orchestrator test-worker clean build docker-build deploy run-worker install-cert-manager install-otel-operator install-dependencies create-honeycomb-secret create-namespace k8s-cleanup k8s-cleanup-all
 
 # Run all tests
 test: test-frontend test-orchestrator test-worker
@@ -101,6 +101,31 @@ run-worker:
 	kubectl apply -f k8s/worker.yaml
 	@echo "Worker job created. Use 'kubectl get jobs -n otelbrot' to check status."
 
+# Clean up Kubernetes resources (keeps namespace)
+k8s-cleanup:
+	@echo "Cleaning up Kubernetes resources..."
+	@echo "Deleting application resources..."
+	-kubectl delete -f k8s/frontend.yaml --ignore-not-found
+	-kubectl delete -f k8s/orchestrator.yaml --ignore-not-found
+	-kubectl delete -f k8s/redis.yaml --ignore-not-found
+	-kubectl delete -f k8s/opentelemetry.yaml --ignore-not-found
+	-kubectl delete -f k8s/otel-configmap.yaml --ignore-not-found
+	@echo "Deleting jobs and pods..."
+	-kubectl delete jobs --all -n otelbrot --ignore-not-found
+	-kubectl delete pods --all -n otelbrot --ignore-not-found
+	@echo "Deleting RBAC resources..."
+	-kubectl delete -f k8s/rbac.yaml --ignore-not-found
+	@echo "Cleaning up persistent resources..."
+	-kubectl delete pvc --all -n otelbrot --ignore-not-found
+	@echo "Kubernetes resources cleaned up successfully."
+
+# Clean up all Kubernetes resources (including namespace)
+k8s-cleanup-all: k8s-cleanup
+	@echo "Performing complete cleanup including namespace..."
+	-kubectl delete secret honeycomb-api-key -n otelbrot --ignore-not-found
+	-kubectl delete -f k8s/namespace.yaml --ignore-not-found
+	@echo "Complete cleanup finished. Namespace has been deleted."
+
 # Show help
 help:
 	@echo "Usage: make [target]"
@@ -118,4 +143,6 @@ help:
 	@echo "  install-dependencies  Install all dependencies"
 	@echo "  deploy                Deploy to Kubernetes (includes dependencies)"
 	@echo "  run-worker            Run a worker job in Kubernetes"
+	@echo "  k8s-cleanup           Clean up Kubernetes resources (keeps namespace)"
+	@echo "  k8s-cleanup-all       Clean up all Kubernetes resources (including namespace)"
 	@echo "  help                  Show this help message"
