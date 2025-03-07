@@ -89,7 +89,8 @@ deploy: docker-build install-dependencies create-honeycomb-secret
 	kubectl apply -f k8s/namespace.yaml
 	kubectl apply -f k8s/redis.yaml
 	kubectl apply -f k8s/rbac.yaml
-	kubectl apply -f k8s/otel-configmap.yaml
+	kubectl apply -f k8s/otel-agent-orchestrator-config.yaml
+	kubectl apply -f k8s/otel-agent-worker-config.yaml
 	kubectl apply -f k8s/orchestrator.yaml
 	kubectl apply -f k8s/frontend.yaml
 	kubectl apply -f k8s/opentelemetry.yaml

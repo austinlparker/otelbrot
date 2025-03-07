@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: otel-agent-config
+  name: otel-agent-orchestrator-config
   namespace: otelbrot
 data:
   otel-agent-config.yaml: |

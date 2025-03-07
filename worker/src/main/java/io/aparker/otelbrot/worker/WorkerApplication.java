@@ -29,18 +29,6 @@ public class WorkerApplication {
     private static final Logger logger = LoggerFactory.getLogger(WorkerApplication.class);
 
     public static void main(String[] args) {
-        // Register a JVM shutdown hook to ensure proper cleanup
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            logger.info("Shutdown hook triggered - waiting for telemetry export...");
-            try {
-                // Wait a bit to allow any pending telemetry to be exported
-                Thread.sleep(5000);
-            } catch (InterruptedException e) {
-                logger.warn("Shutdown hook sleep interrupted");
-            }
-            logger.info("Shutdown hook completed");
-        }));
-        
         SpringApplication.run(WorkerApplication.class, args);
     }
 
@@ -121,7 +109,8 @@ public class WorkerApplication {
             }
         };
         
-        Context extractedContext = propagator.extract(Context.root(), carrier, getter);
+        // Use Context.current() instead of Context.root() as the starting point
+        Context extractedContext = propagator.extract(Context.current(), carrier, getter);
         logger.info("Context extraction completed from environment variables");
         
         return extractedContext;
@@ -159,16 +148,17 @@ public class WorkerApplication {
             // Log what we're about to do for debugging
             logger.info("About to create root span with parentContext: {}", 
                 parentContext != Context.root() ? "custom context" : "root context");
-            
+            logger.info("Parent context: {}", parentContext);
             // Create span with parent context if available
+            logger.info("Tracer={}", tracer);
             Span rootSpan = tracer.spanBuilder("WorkerApplication.process")
                     .setParent(parentContext)
-                    .setAttribute("service.name", "otelbrot-worker")
                     .startSpan();
                     
-            logger.info("Created root span: traceId={}, spanId={}", 
+            logger.info("Created root span: traceId={}, spanId={}, isRemote={}", 
                 rootSpan.getSpanContext().getTraceId(),
-                rootSpan.getSpanContext().getSpanId());
+                rootSpan.getSpanContext().getSpanId(),
+                rootSpan.getSpanContext().isRemote());
             
             try (Scope scope = rootSpan.makeCurrent()) {
                 // TileSpec should come from the Bean method, which tries environment variables
@@ -189,35 +179,15 @@ public class WorkerApplication {
                     logger.info("Successfully completed tile processing");
                 } else {
                     logger.error("Failed to send tile result");
-                    // Mark span as failed but don't exit immediately
                     rootSpan.setStatus(io.opentelemetry.api.trace.StatusCode.ERROR, "Failed to send tile result");
-                    // Let the application exit through finally block without System.exit
                 }
             } catch (Exception e) {
                 logger.error("Error processing tile", e);
                 rootSpan.recordException(e);
                 rootSpan.setStatus(io.opentelemetry.api.trace.StatusCode.ERROR, e.getMessage());
-                // Let the application exit through finally block without System.exit
             } finally {
-                // End the span
                 rootSpan.end();
                 logger.info("Root span ended");
-                
-                // Wait for spans to be exported (longer than batch timeout)
-                logger.info("Waiting for telemetry to be exported...");
-                try {
-                    // Wait longer than the batch processor timeout (configured for 10s)
-                    Thread.sleep(15000);
-                    logger.info("Telemetry export wait completed");
-                } catch (InterruptedException ie) {
-                    logger.warn("Wait for telemetry export was interrupted");
-                }
-                
-                // Only for testing we return normally, in production we'll exit with success/failure
-                if (!"test".equals(System.getProperty("spring.profiles.active"))) {
-                    // Add a small delay before exit to ensure logging is flushed
-                    try { Thread.sleep(100); } catch (InterruptedException ie) {}
-                }
             }
         };
     }

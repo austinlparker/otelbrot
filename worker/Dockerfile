@@ -37,5 +37,8 @@ WORKDIR /app
 # Copy JAR file from build stage
 COPY --from=build /app/worker/target/*.jar app.jar
 
+# Set environment variables
+ENV JAVA_TOOL_OPTIONS="-Dotel.javaagent.debug=true"
+
 # Run the jar file, this will exit after completion
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]
