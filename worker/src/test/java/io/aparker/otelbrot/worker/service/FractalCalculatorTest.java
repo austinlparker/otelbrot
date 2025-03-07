@@ -5,7 +5,9 @@ import io.aparker.otelbrot.commons.model.TileSpec;
 import io.aparker.otelbrot.commons.model.TileStatus;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanBuilder;
+import io.opentelemetry.api.trace.SpanContext;
 import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Context;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -34,6 +36,9 @@ class FractalCalculatorTest {
     @Mock
     private Span span;
 
+    @Mock
+    private SpanContext spanContext;
+
     @InjectMocks
     private FractalCalculator fractalCalculator;
 
@@ -42,6 +47,9 @@ class FractalCalculatorTest {
         // Mock the tracer behavior
         SpanBuilder mockSpanBuilder = mock(SpanBuilder.class);
         when(tracer.spanBuilder(anyString())).thenReturn(mockSpanBuilder);
+        
+        // Mock the SpanBuilder's setParent method to return itself
+        when(mockSpanBuilder.setParent(any(Context.class))).thenReturn(mockSpanBuilder);
         
         // Mock the SpanBuilder's setAttribute methods to return itself
         when(mockSpanBuilder.setAttribute(anyString(), anyString())).thenReturn(mockSpanBuilder);
@@ -56,6 +64,11 @@ class FractalCalculatorTest {
         when(span.setAttribute(anyString(), anyLong())).thenReturn(span);
         when(span.setAttribute(anyString(), anyDouble())).thenReturn(span);
         when(span.setAttribute(anyString(), anyBoolean())).thenReturn(span);
+        
+        // Mock SpanContext for span
+        when(span.getSpanContext()).thenReturn(spanContext);
+        when(spanContext.getTraceId()).thenReturn("fake-trace-id");
+        when(spanContext.getSpanId()).thenReturn("fake-span-id");
         
         // Set up the color mapper to return a simple color for testing
         when(colorMapper.applyColorMap(anyInt(), anyInt(), anyString()))
