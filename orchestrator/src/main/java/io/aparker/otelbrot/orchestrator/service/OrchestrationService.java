@@ -2,13 +2,11 @@ package io.aparker.otelbrot.orchestrator.service;
 
 import io.aparker.otelbrot.commons.model.TileResult;
 import io.aparker.otelbrot.commons.model.TileSpec;
-import io.aparker.otelbrot.commons.model.TileStatus;
 import io.aparker.otelbrot.orchestrator.model.FractalJob;
 import io.aparker.otelbrot.orchestrator.model.JobStatus;
 import io.aparker.otelbrot.orchestrator.model.RenderRequest;
 import io.aparker.otelbrot.orchestrator.repository.JobRepository;
 import io.aparker.otelbrot.orchestrator.repository.TileRepository;
-import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.batch.v1.Job;
 import io.fabric8.kubernetes.api.model.batch.v1.JobBuilder;
 import io.fabric8.kubernetes.client.KubernetesClient;
@@ -22,7 +20,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.beans.factory.annotation.Autowired;
 
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
@@ -417,7 +414,6 @@ public class OrchestrationService {
         // Create a span for this operation with a valid parent context
         Span span = tracer.spanBuilder("OrchestrationService.createWorkerJob")
                 .setParent(parentContext)
-                .setAttribute("service.name", "otelbrot-orchestrator")
                 .setAttribute("job.id", tileSpec.getJobId())
                 .setAttribute("tile.id", tileSpec.getTileId())
                 .setAttribute("tile.priority", isPriority ? "high" : "normal")
@@ -479,10 +475,24 @@ public class OrchestrationService {
                             .endMetadata()
                             .withNewSpec()
                                 .withRestartPolicy("Never")
+                                .addNewVolume()
+                                    .withName("otel-agent-config-volume")
+                                    .withNewConfigMap()
+                                        .withName("otel-agent-worker-config")
+                                    .endConfigMap()
+                                .endVolume()
                                 .addNewContainer()
                                     .withName("worker")
                                     .withImage(workerImage)
                                     .withImagePullPolicy("IfNotPresent")
+                                    .addNewVolumeMount()
+                                        .withName("otel-agent-config-volume")
+                                        .withMountPath("/etc/otel")
+                                    .endVolumeMount()
+                                    .addNewEnv()
+                                        .withName("OTEL_EXPERIMENTAL_CONFIG_FILE")
+                                        .withValue("/etc/otel/otel-agent-worker-config.yaml")
+                                    .endEnv()
                                     .addNewEnv()
                                         .withName("TILE_SPEC_JOB_ID")
                                         .withValue(tileSpec.getJobId())

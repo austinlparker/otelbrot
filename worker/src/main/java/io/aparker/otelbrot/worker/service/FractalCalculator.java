@@ -49,6 +49,7 @@ public class FractalCalculator {
         } else {
             logger.warn("No current span available in calculateTile");
         }
+        logger.info("Tracer={}", tracer);
         
         // Create a child span from the current context
         Span span = tracer.spanBuilder("FractalCalculator.calculateTile")

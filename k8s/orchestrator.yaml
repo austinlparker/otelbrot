@@ -24,11 +24,11 @@ spec:
       volumes:
       - name: otel-agent-config-volume
         configMap:
-          name: otel-agent-config
+          name: otel-agent-orchestrator-config
       containers:
       - name: orchestrator
         image: otelbrot/orchestrator:latest
-        imagePullPolicy: Always  # Use locally built image
+        imagePullPolicy: IfNotPresent  # Use locally built image
         ports:
         - containerPort: 8080
         env:
@@ -38,8 +38,6 @@ spec:
           value: "6379"
         - name: SPRING_PROFILES_ACTIVE
           value: "dev"
-        - name: OTEL_SERVICE_NAME
-          value: "otelbrot-orchestrator"
         - name: OTEL_EXPERIMENTAL_CONFIG_FILE
           value: "/etc/otel/otel-agent-config.yaml"
         volumeMounts:

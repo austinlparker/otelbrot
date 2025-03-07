@@ -14,8 +14,7 @@ spec:
       mountPropagation: HostToContainer
   volumes:
     - name: hostfs
-      hostPath:
-        path: /
+      emptyDir: {}
   env:
     - name: HONEYCOMB_API_KEY
       valueFrom:
@@ -30,16 +29,6 @@ spec:
             endpoint: 0.0.0.0:4317
           http:
             endpoint: 0.0.0.0:4318
-      hostmetrics:
-        root_path: /hostfs
-        collection_interval: 60s
-        scrapers:
-          cpu:
-          load:
-          memory:
-          disk:
-          filesystem:
-          network:
       kubeletstats:
         collection_interval: 60s
         auth_type: "serviceAccount"
@@ -73,14 +62,14 @@ spec:
 
     exporters:
       debug: {}
-      otlphttp/lgtm:
-        endpoint: http://otel-lgtm:4318
-        tls:
-          insecure: true
       otlp/honeycomb:
         endpoint: api.honeycomb.io:443
         headers:
           x-honeycomb-team: ${HONEYCOMB_API_KEY}
+      otlphttp/lgtm:
+        endpoint: http://otel-lgtm:4318
+        tls:
+          insecure: true
 
     service:
       pipelines:
@@ -89,7 +78,7 @@ spec:
           processors: [memory_limiter, k8sattributes, resource, batch]
           exporters: [debug, otlphttp/lgtm, otlp/honeycomb]
         metrics:
-          receivers: [otlp, hostmetrics, kubeletstats]
+          receivers: [otlp, kubeletstats]
           processors: [memory_limiter, k8sattributes, resource, batch]
           exporters: [debug, otlphttp/lgtm, otlp/honeycomb]
         logs:
@@ -113,6 +102,53 @@ spec:
     argument: "1"
   java:
     image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-java:2.13.2
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-collector
+  namespace: otelbrot
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: otel-collector
+rules:
+- apiGroups: [""]
+  resources:
+  - nodes
+  - nodes/stats
+  - nodes/metrics
+  - services
+  - endpoints
+  - pods
+  - namespaces
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources:
+  - deployments
+  - replicasets
+  - statefulsets
+  - daemonsets
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["batch"]
+  resources:
+  - jobs
+  - cronjobs
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otel-collector
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: otel-collector
+subjects:
+- kind: ServiceAccount
+  name: otel-collector
+  namespace: otelbrot
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -166,49 +202,3 @@ spec:
     port: 4318
     targetPort: otlp-http
   type: ClusterIP
----
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: otel-collector
-  namespace: otelbrot
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: otel-collector
-rules:
-- apiGroups: [""]
-  resources:
-  - nodes
-  - nodes/stats
-  - nodes/metrics
-  - services
-  - endpoints
-  - pods
-  verbs: ["get", "list", "watch"]
-- apiGroups: ["apps"]
-  resources:
-  - deployments
-  - replicasets
-  - statefulsets
-  - daemonsets
-  verbs: ["get", "list", "watch"]
-- apiGroups: ["batch"]
-  resources:
-  - jobs
-  - cronjobs
-  verbs: ["get", "list", "watch"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: otel-collector
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: otel-collector
-subjects:
-- kind: ServiceAccount
-  name: otel-collector
-  namespace: otelbrot
