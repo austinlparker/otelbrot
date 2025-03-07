@@ -115,11 +115,11 @@ run-worker:
 	kubectl apply -f k8s/worker.yaml
 	@echo "Worker job created. Use 'kubectl get jobs -n otelbrot' to check status."
 
-# Run a Go worker deployment
+# Run a Go worker job
 run-go-worker:
-	@echo "Creating Go worker deployment..."
+	@echo "Creating Go worker job..."
 	kubectl apply -f k8s/go-worker.yaml
-	@echo "Go worker deployment created. Use 'kubectl get deployment -n otelbrot' to check status."
+	@echo "Go worker job created. Use 'kubectl get jobs -n otelbrot' to check status."
 
 # Clean up Kubernetes resources (keeps namespace)
 k8s-cleanup:
@@ -167,7 +167,7 @@ help:
 	@echo "  install-dependencies  Install all dependencies"
 	@echo "  deploy                Deploy to Kubernetes (includes dependencies)"
 	@echo "  run-worker            Run a worker job in Kubernetes"
-	@echo "  run-go-worker         Run a Go worker deployment in Kubernetes"
+	@echo "  run-go-worker         Run a Go worker job in Kubernetes"
 	@echo "  k8s-cleanup           Clean up Kubernetes resources (keeps namespace)"
 	@echo "  k8s-cleanup-all       Clean up all Kubernetes resources (including namespace)"
 	@echo "  help                  Show this help message"

@@ -27,8 +27,5 @@ WORKDIR /app
 # Copy the binary from builder stage
 COPY --from=builder /app/worker .
 
-# Expose the server port
-EXPOSE 8081
-
-# Run the worker
+# Run the worker as a single-shot process
 CMD ["/app/worker"]
