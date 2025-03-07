@@ -4,8 +4,11 @@ import io.aparker.otelbrot.commons.model.TileResult;
 import io.aparker.otelbrot.commons.model.TileStatus;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanBuilder;
+import io.opentelemetry.api.trace.SpanContext;
 import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Context;
+import io.opentelemetry.context.propagation.TextMapPropagator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -14,6 +17,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -36,6 +41,12 @@ class ResultSenderTest {
 
     @Mock
     private Span span;
+    
+    @Mock
+    private SpanContext spanContext;
+    
+    @Mock
+    private TextMapPropagator propagator;
 
     @InjectMocks
     private ResultSender resultSender;
@@ -45,6 +56,9 @@ class ResultSenderTest {
         // Mock the tracer behavior
         SpanBuilder mockSpanBuilder = mock(SpanBuilder.class);
         when(tracer.spanBuilder(anyString())).thenReturn(mockSpanBuilder);
+        
+        // Mock the SpanBuilder's setParent method to return itself
+        when(mockSpanBuilder.setParent(any(Context.class))).thenReturn(mockSpanBuilder);
         
         // Mock the SpanBuilder's setAttribute methods to return itself
         when(mockSpanBuilder.setAttribute(anyString(), anyString())).thenReturn(mockSpanBuilder);
@@ -61,6 +75,11 @@ class ResultSenderTest {
         when(span.setAttribute(anyString(), anyBoolean())).thenReturn(span);
         when(span.setStatus(any(StatusCode.class), anyString())).thenReturn(span);
         
+        // Mock SpanContext for span
+        when(span.getSpanContext()).thenReturn(spanContext);
+        when(spanContext.getTraceId()).thenReturn("fake-trace-id");
+        when(spanContext.getSpanId()).thenReturn("fake-span-id");
+        
         // Set the orchestrator URL for testing
         ReflectionTestUtils.setField(resultSender, "orchestratorUrl", "http://localhost:8080");
     }
@@ -71,7 +90,7 @@ class ResultSenderTest {
         TileResult result = createTestTileResult();
         
         ResponseEntity<Object> responseEntity = new ResponseEntity<>(HttpStatus.ACCEPTED);
-        when(restTemplate.postForEntity(anyString(), any(), any())).thenReturn(responseEntity);
+        when(restTemplate.exchange(anyString(), eq(HttpMethod.POST), any(HttpEntity.class), eq(Object.class))).thenReturn(responseEntity);
         
         // Execute
         boolean success = resultSender.sendResult(result);
@@ -79,7 +98,7 @@ class ResultSenderTest {
         // Verify
         assertTrue(success);
         
-        verify(restTemplate).postForEntity(eq("http://localhost:8080/api/fractal/tile-result"), eq(result), eq(Object.class));
+        verify(restTemplate).exchange(eq("http://localhost:8080/api/fractal/tile-result"), eq(HttpMethod.POST), any(HttpEntity.class), eq(Object.class));
         verify(span).end();
     }
 
@@ -89,7 +108,7 @@ class ResultSenderTest {
         TileResult result = createTestTileResult();
         
         ResponseEntity<Object> responseEntity = new ResponseEntity<>(HttpStatus.BAD_REQUEST);
-        when(restTemplate.postForEntity(anyString(), any(), any())).thenReturn(responseEntity);
+        when(restTemplate.exchange(anyString(), eq(HttpMethod.POST), any(HttpEntity.class), eq(Object.class))).thenReturn(responseEntity);
         
         // Execute
         boolean success = resultSender.sendResult(result);
@@ -97,7 +116,7 @@ class ResultSenderTest {
         // Verify
         assertFalse(success);
         
-        verify(restTemplate).postForEntity(eq("http://localhost:8080/api/fractal/tile-result"), eq(result), eq(Object.class));
+        verify(restTemplate).exchange(eq("http://localhost:8080/api/fractal/tile-result"), eq(HttpMethod.POST), any(HttpEntity.class), eq(Object.class));
         verify(span).setStatus(eq(StatusCode.ERROR), anyString());
         verify(span).end();
     }
@@ -107,7 +126,7 @@ class ResultSenderTest {
         // Setup
         TileResult result = createTestTileResult();
         
-        when(restTemplate.postForEntity(anyString(), any(), any()))
+        when(restTemplate.exchange(anyString(), eq(HttpMethod.POST), any(HttpEntity.class), eq(Object.class)))
                 .thenThrow(new HttpServerErrorException(HttpStatus.INTERNAL_SERVER_ERROR));
         
         // Execute
@@ -116,7 +135,7 @@ class ResultSenderTest {
         // Verify
         assertFalse(success);
         
-        verify(restTemplate).postForEntity(eq("http://localhost:8080/api/fractal/tile-result"), eq(result), eq(Object.class));
+        verify(restTemplate).exchange(eq("http://localhost:8080/api/fractal/tile-result"), eq(HttpMethod.POST), any(HttpEntity.class), eq(Object.class));
         verify(span).recordException(any(Exception.class));
         verify(span).setStatus(eq(StatusCode.ERROR), anyString());
         verify(span).end();
