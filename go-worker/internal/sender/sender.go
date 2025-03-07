@@ -39,16 +39,30 @@ func NewResultSender(orchestratorURL string, logger *log.Logger) *ResultSender {
 
 // SendResult sends a tile result back to the orchestrator
 func (s *ResultSender) SendResult(ctx context.Context, result *models.TileResult) error {
-	ctx, span := s.tracer.Start(ctx, "SendResult",
+	// Log trace context information
+	spanContext := trace.SpanContextFromContext(ctx)
+	if spanContext.IsValid() {
+		s.logger.Printf("Sending result with trace context: traceID=%s, spanID=%s, sampled=%t", 
+			spanContext.TraceID().String(), spanContext.SpanID().String(), spanContext.IsSampled())
+	} else {
+		s.logger.Printf("No valid trace context found when sending result")
+	}
+
+	ctx, span := s.tracer.Start(ctx, "ResultSender.SendResult",
 		trace.WithAttributes(
 			attribute.String("job.id", result.JobID),
 			attribute.String("tile.id", result.TileID),
+			attribute.Int("result.width", result.Width),
+			attribute.Int("result.height", result.Height),
+			attribute.Int64("result.calculationTimeMs", result.CalculationTimeMs),
+			attribute.String("result.status", string(result.Status)),
+			attribute.Int("result.imageDataSize", len(result.ImageData)),
 		))
 	defer span.End()
 	
 	endpoint := fmt.Sprintf("%s/api/fractal/tile-result", s.orchestratorURL)
-	s.logger.Printf("Sending tile result to %s: job %s, tile %s", 
-		endpoint, result.JobID, result.TileID)
+	s.logger.Printf("Sending tile result to %s: job %s, tile %s, status %s, data size %d bytes", 
+		endpoint, result.JobID, result.TileID, result.Status, len(result.ImageData))
 	
 	// Create the request
 	body, err := json.Marshal(result)

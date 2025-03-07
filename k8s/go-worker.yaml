@@ -3,58 +3,78 @@ kind: Job
 metadata:
   name: go-worker-sample
   namespace: otelbrot
-  labels:
-    app: go-worker
 spec:
   template:
-    metadata:
-      labels:
-        app: go-worker
-      annotations:
-        instrumentation.opentelemetry.io/inject-go: "otelbrot/go-agent"
     spec:
-      restartPolicy: Never
       containers:
       - name: go-worker
         image: otelbrot/go-worker:latest
         imagePullPolicy: IfNotPresent
+        volumeMounts:
+        - name: go-worker-otel-config-volume
+          mountPath: /app/config
         env:
-        - name: OTEL_EXPORTER_OTLP_ENDPOINT
-          value: "http://otel-collector.otelbrot.svc.cluster.local:4317"
+        - name: OTEL_CONFIG_FILE
+          value: "/app/config/otel-config.yaml"
+        - name: OTEL_SERVICE_NAME
+          value: "go-worker"
         - name: ORCHESTRATOR_URL
-          value: "http://orchestrator.otelbrot.svc.cluster.local:8080"
-        # Example tile specification
-        - name: TILE_SPEC_JOB_ID
-          value: "sample-job"
-        - name: TILE_SPEC_TILE_ID  
-          value: "sample-tile-1"
-        - name: TILE_SPEC_X_MIN
+          value: "http://orchestrator:8080"
+        - name: JOB_ID
+          value: "sample-job-001"
+        - name: TILE_ID
+          value: "sample-tile-001"
+        - name: X_MIN
           value: "-2.0"
-        - name: TILE_SPEC_Y_MIN
-          value: "-1.5"
-        - name: TILE_SPEC_X_MAX
+        - name: X_MAX
           value: "1.0"
-        - name: TILE_SPEC_Y_MAX
+        - name: Y_MIN
+          value: "-1.5"
+        - name: Y_MAX
           value: "1.5"
-        - name: TILE_SPEC_WIDTH
+        - name: WIDTH
           value: "800"
-        - name: TILE_SPEC_HEIGHT
+        - name: HEIGHT
           value: "600"
-        - name: TILE_SPEC_MAX_ITERATIONS
-          value: "100"
-        - name: TILE_SPEC_COLOR_SCHEME
-          value: "classic"
-        - name: TILE_SPEC_PIXEL_START_X
-          value: "0"
-        - name: TILE_SPEC_PIXEL_START_Y
-          value: "0"
-        # OpenTelemetry trace context if needed
-        - name: TRACEPARENT
-          value: ""
-        resources:
-          requests:
-            cpu: "100m"
-            memory: "128Mi"
-          limits:
-            cpu: "1000m"
-            memory: "512Mi"
+        - name: MAX_ITERATIONS
+          value: "1000"
+      restartPolicy: OnFailure
+      volumes:
+      - name: go-worker-otel-config-volume
+        configMap:
+          name: go-worker-otel-config
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: go-worker-controller
+  namespace: otelbrot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: go-worker-controller
+  template:
+    metadata:
+      labels:
+        app: go-worker-controller
+    spec:
+      serviceAccountName: orchestrator-sa
+      containers:
+      - name: go-worker-controller
+        image: otelbrot/go-worker:latest
+        imagePullPolicy: IfNotPresent
+        volumeMounts:
+        - name: go-worker-otel-config-volume
+          mountPath: /app/config
+        env:
+        - name: OTEL_CONFIG_FILE
+          value: "/app/config/otel-config.yaml"
+        - name: OTEL_SERVICE_NAME
+          value: "go-worker-controller"
+        - name: ORCHESTRATOR_URL
+          value: "http://orchestrator:8080"
+      volumes:
+      - name: go-worker-otel-config-volume
+        configMap:
+          name: go-worker-otel-config

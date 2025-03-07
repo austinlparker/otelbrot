@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.22-alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 # Set working directory
 WORKDIR /app
@@ -26,6 +26,10 @@ WORKDIR /app
 
 # Copy the binary from builder stage
 COPY --from=builder /app/worker .
+COPY --from=builder /app/config.json .
 
-# Run the worker as a single-shot process
-CMD ["/app/worker"]
+# Create config directory
+RUN mkdir -p /app/config
+
+# Run the worker with support for optional config
+ENTRYPOINT ["/app/worker", "--config=/app/config.json"]

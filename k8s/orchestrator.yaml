@@ -28,7 +28,7 @@ spec:
       containers:
       - name: orchestrator
         image: otelbrot/orchestrator:latest
-        imagePullPolicy: Always  # Use locally built image
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8080
         env:

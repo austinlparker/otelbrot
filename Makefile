@@ -11,7 +11,6 @@ build:
 	cd frontend && npm run build
 	cd commons && ../worker/mvnw clean install -q -DskipTests
 	cd orchestrator && ./mvnw clean install -q -DskipTests
-	cd worker && ./mvnw clean install -q -DskipTests
 	$(MAKE) build-go-worker
 
 # Build Go worker
@@ -37,7 +36,7 @@ test-worker:
 # Run Go worker tests
 test-go-worker:
 	@echo "Running Go worker tests..."
-	cd go-worker && go test ./...
+	cd go-worker && go test -v ./internal/... ./cmd/...
 
 # Clean all build outputs
 clean:
@@ -53,7 +52,6 @@ docker-build: build
 	@echo "Building Docker images..."
 	docker build -t otelbrot/frontend:latest -f ./frontend/Dockerfile ./frontend
 	docker build -t otelbrot/orchestrator:latest -f ./orchestrator/Dockerfile .
-	docker build -t otelbrot/worker:latest -f ./worker/Dockerfile .
 	docker build -t otelbrot/go-worker:latest -f ./go-worker/Dockerfile ./go-worker
 	@echo "Docker images built."
 
@@ -102,24 +100,19 @@ deploy: docker-build install-dependencies create-honeycomb-secret
 	kubectl apply -f k8s/namespace.yaml
 	kubectl apply -f k8s/redis.yaml
 	kubectl apply -f k8s/rbac.yaml
-	kubectl apply -f k8s/otel-agent-orchestrator-config.yaml
-	kubectl apply -f k8s/otel-agent-worker-config.yaml
+	kubectl apply -f k8s/otel-configmap.yaml
 	kubectl apply -f k8s/orchestrator.yaml
 	kubectl apply -f k8s/frontend.yaml
 	kubectl apply -f k8s/opentelemetry.yaml
 	@echo "Deployment complete. Use 'kubectl get pods -n otelbrot' to check status."
 
-# Run a worker job
+# Run a worker job (removed - workers are now created by orchestrator)
 run-worker:
-	@echo "Creating worker job..."
-	kubectl apply -f k8s/worker.yaml
-	@echo "Worker job created. Use 'kubectl get jobs -n otelbrot' to check status."
+	@echo "Worker manifests have been removed. Workers are now created dynamically by the orchestrator."
 
-# Run a Go worker job
+# Run a Go worker job (removed - workers are now created by orchestrator)
 run-go-worker:
-	@echo "Creating Go worker job..."
-	kubectl apply -f k8s/go-worker.yaml
-	@echo "Go worker job created. Use 'kubectl get jobs -n otelbrot' to check status."
+	@echo "The Go worker manifest has been removed. Workers are now created dynamically by the orchestrator."
 
 # Clean up Kubernetes resources (keeps namespace)
 k8s-cleanup:
@@ -128,10 +121,8 @@ k8s-cleanup:
 	-kubectl delete -f k8s/frontend.yaml --ignore-not-found
 	-kubectl delete -f k8s/orchestrator.yaml --ignore-not-found
 	-kubectl delete -f k8s/redis.yaml --ignore-not-found
-	-kubectl delete -f k8s/go-worker.yaml --ignore-not-found
 	-kubectl delete -f k8s/opentelemetry.yaml --ignore-not-found
-	-kubectl delete -f k8s/otel-agent-orchestrator-config.yaml --ignore-not-found
-	-kubectl delete -f k8s/otel-agent-worker-config.yaml --ignore-not-found
+	-kubectl delete -f k8s/otel-configmap.yaml --ignore-not-found
 	@echo "Deleting jobs and pods..."
 	-kubectl delete jobs --all -n otelbrot --ignore-not-found
 	-kubectl delete pods --all -n otelbrot --ignore-not-found

@@ -4,18 +4,9 @@ metadata:
   name: otel
   namespace: otelbrot
 spec:
-  mode: "daemonset"  # Running as DaemonSet for host metrics collection
+  mode: "deployment"  # Changed from daemonset to deployment to avoid hostPath mount issues
   serviceAccount: otel-collector
-  image: otel/opentelemetry-collector-k8s
-  volumeMounts:
-    - name: hostfs
-      mountPath: /hostfs
-      readOnly: true
-      mountPropagation: HostToContainer
-  volumes:
-    - name: hostfs
-      hostPath:
-        path: /
+  image: otel/opentelemetry-collector-contrib
   env:
     - name: HONEYCOMB_API_KEY
       valueFrom:
@@ -30,16 +21,8 @@ spec:
             endpoint: 0.0.0.0:4317
           http:
             endpoint: 0.0.0.0:4318
-      hostmetrics:
-        root_path: /hostfs
-        collection_interval: 60s
-        scrapers:
-          cpu:
-          load:
-          memory:
-          disk:
-          filesystem:
-          network:
+      # Hostmetrics removed as we switched to deployment mode
+      # Will use kubeletstats for monitoring instead
       kubeletstats:
         collection_interval: 60s
         auth_type: "serviceAccount"
@@ -89,7 +72,7 @@ spec:
           processors: [memory_limiter, k8sattributes, resource, batch]
           exporters: [debug, otlphttp/lgtm, otlp/honeycomb]
         metrics:
-          receivers: [otlp, hostmetrics, kubeletstats]
+          receivers: [otlp, kubeletstats]
           processors: [memory_limiter, k8sattributes, resource, batch]
           exporters: [debug, otlphttp/lgtm, otlp/honeycomb]
         logs:

@@ -2,13 +2,11 @@ package io.aparker.otelbrot.orchestrator.service;
 
 import io.aparker.otelbrot.commons.model.TileResult;
 import io.aparker.otelbrot.commons.model.TileSpec;
-import io.aparker.otelbrot.commons.model.TileStatus;
 import io.aparker.otelbrot.orchestrator.model.FractalJob;
 import io.aparker.otelbrot.orchestrator.model.JobStatus;
 import io.aparker.otelbrot.orchestrator.model.RenderRequest;
 import io.aparker.otelbrot.orchestrator.repository.JobRepository;
 import io.aparker.otelbrot.orchestrator.repository.TileRepository;
-import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.batch.v1.Job;
 import io.fabric8.kubernetes.api.model.batch.v1.JobBuilder;
 import io.fabric8.kubernetes.client.KubernetesClient;
@@ -22,7 +20,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.beans.factory.annotation.Autowired;
 
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
@@ -66,8 +63,8 @@ public class OrchestrationService {
     @Value("${app.worker.max-concurrent:2}")
     private int maxConcurrentWorkers;
 
-    @Value("${app.worker.enable-agent:otelbrot/java-agent}")
-    private String enableAgent;
+    @Value("${app.worker.image-pull-policy:Never}")
+    private String imagePullPolicy;
     
     // Keep track of active worker count
     private int activeWorkerCount = 0;
@@ -109,28 +106,45 @@ public class OrchestrationService {
      * Create a new fractal rendering job
      */
     public FractalJob createRenderJob(RenderRequest request) {
-        Span span = tracer.spanBuilder("OrchestrationService.createRenderJob")
+        Span rootSpan = tracer.spanBuilder("OrchestrationService.createRenderJob")
                 .setParent(Context.current())
                 .startSpan();
-        try (Scope scope = span.makeCurrent()) {
+        try (Scope scope = rootSpan.makeCurrent()) {
             // Create and save the job
             FractalJob job = FractalJob.fromRenderRequest(request);
             jobRepository.save(job);
-            span.setAttribute("job.id", job.getJobId());
+            rootSpan.setAttribute("job.id", job.getJobId());
             logger.info("Created new fractal job: {}", job.getJobId());
             
-            // Initialize preview job (low resolution for quick feedback)
-            createPreviewJob(job);
+            // Create a new context with the root span
+            Context jobContext = Context.current();
             
-            // Initialize detailed tiles
-            createDetailJobs(job);
+            // Initialize preview job with its own span
+            Span previewSpan = tracer.spanBuilder("OrchestrationService.createPreviewJob")
+                    .setParent(jobContext)
+                    .startSpan();
+            try (Scope previewScope = previewSpan.makeCurrent()) {
+                createPreviewJob(job);
+            } finally {
+                previewSpan.end();
+            }
+            
+            // Initialize detailed tiles with their own span
+            Span detailSpan = tracer.spanBuilder("OrchestrationService.createDetailJobs")
+                    .setParent(jobContext)
+                    .startSpan();
+            try (Scope detailScope = detailSpan.makeCurrent()) {
+                createDetailJobs(job);
+            } finally {
+                detailSpan.end();
+            }
             
             // Send initial progress update
             webSocketService.sendProgressUpdate(job, 0);
             
             return job;
         } finally {
-            span.end();
+            rootSpan.end();
         }
     }
 
@@ -417,7 +431,6 @@ public class OrchestrationService {
         // Create a span for this operation with a valid parent context
         Span span = tracer.spanBuilder("OrchestrationService.createWorkerJob")
                 .setParent(parentContext)
-                .setAttribute("service.name", "otelbrot-orchestrator")
                 .setAttribute("job.id", tileSpec.getJobId())
                 .setAttribute("tile.id", tileSpec.getTileId())
                 .setAttribute("tile.priority", isPriority ? "high" : "normal")
@@ -455,9 +468,6 @@ public class OrchestrationService {
             labels.put("fractal-tile-id", tileId);
             labels.put("priority", isPriority ? "high" : "normal");
 
-            Map<String, String> annotations = new HashMap<>();
-            annotations.put("instrumentation.opentelemetry.io/inject-java", enableAgent);
-            logger.info("Setting OpenTelemetry annotations: {}", annotations);
             
             // Add a TTL for automatic cleanup if we're not manually cleaning up
             Integer ttlSecondsAfterFinished = cleanupCompletedJobs ? null : 300; // 5 minutes TTL
@@ -467,7 +477,6 @@ public class OrchestrationService {
                     .withNewMetadata()
                         .withName(name)
                         .withLabels(labels)
-                        .withAnnotations(annotations)
                     .endMetadata()
                     .withNewSpec()
                         .withBackoffLimit(2)
@@ -475,14 +484,25 @@ public class OrchestrationService {
                         .withNewTemplate()
                             .withNewMetadata()
                                 .withLabels(labels)
-                                .withAnnotations(annotations) 
+                                // No OpenTelemetry annotation - Go instrumentation is built-in
                             .endMetadata()
                             .withNewSpec()
                                 .withRestartPolicy("Never")
+                                // Add the OpenTelemetry config volume to the pod
+                                .addNewVolume()
+                                    .withName("go-worker-otel-config")
+                                    .withNewConfigMap()
+                                        .withName("go-worker-otel-config")
+                                    .endConfigMap()
+                                .endVolume()
                                 .addNewContainer()
                                     .withName("worker")
                                     .withImage(workerImage)
-                                    .withImagePullPolicy("IfNotPresent")
+                                    .withImagePullPolicy(imagePullPolicy)
+                                    .addNewEnv()
+                                        .withName("ORCHESTRATOR_URL") 
+                                        .withValue("http://orchestrator.otelbrot.svc.cluster.local:8080")
+                                    .endEnv()
                                     .addNewEnv()
                                         .withName("TILE_SPEC_JOB_ID")
                                         .withValue(tileSpec.getJobId())
@@ -531,6 +551,7 @@ public class OrchestrationService {
                                         .withName("TILE_SPEC_PIXEL_START_Y")
                                         .withValue(String.valueOf(tileSpec.getPixelStartY()))
                                     .endEnv()
+
                                     
                                     // Add OpenTelemetry trace context using W3C standard environment variables
                                     .addNewEnv()
@@ -540,6 +561,19 @@ public class OrchestrationService {
                                     .addNewEnv()
                                         .withName("TRACESTATE")
                                         .withValue(getTraceStateFromSpan(span))
+                                    .endEnv()
+                                    
+                                    // Mount the OpenTelemetry config
+                                    .addNewVolumeMount()
+                                        .withName("go-worker-otel-config")
+                                        .withMountPath("/app/config")
+                                        .withReadOnly(true)
+                                    .endVolumeMount()
+                                    
+                                    // Set environment variable for OpenTelemetry config file
+                                    .addNewEnv()
+                                        .withName("OTEL_CONFIG_FILE")
+                                        .withValue("/app/config/otel-config.yaml")
                                     .endEnv()
                                     .withNewResources()
                                         .addToRequests("cpu", new io.fabric8.kubernetes.api.model.Quantity(workerCpuRequest))

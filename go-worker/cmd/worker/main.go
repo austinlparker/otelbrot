@@ -19,27 +19,57 @@ import (
 func main() {
 	// Parse command line flags
 	configPath := flag.String("config", "", "path to config file")
+	otelConfigPath := flag.String("otel-config", "", "path to OpenTelemetry config file")
+	verbose := flag.Bool("verbose", false, "enable verbose logging")
 	flag.Parse()
 
 	// Initialize logger
-	logger := log.New(os.Stdout, "", log.LstdFlags|log.Lshortfile)
+	logPrefix := "[worker] "
+	logger := log.New(os.Stdout, logPrefix, log.LstdFlags|log.Lshortfile)
 	logger.Println("Starting worker...")
+
+	// Log all environment variables in verbose mode
+	if *verbose {
+		logger.Println("Environment variables:")
+		for _, env := range os.Environ() {
+			logger.Println("  " + env)
+		}
+	}
+
+	// Check for trace context
+	traceParent := os.Getenv("TRACEPARENT")
+	if traceParent != "" {
+		logger.Printf("Found TRACEPARENT: %s", traceParent)
+	} else {
+		logger.Printf("No TRACEPARENT environment variable found")
+	}
+
+	// Set OpenTelemetry config file path if provided via flag
+	if *otelConfigPath != "" {
+		os.Setenv("OTEL_CONFIG_FILE", *otelConfigPath)
+		logger.Printf("Using OpenTelemetry config from: %s", *otelConfigPath)
+	}
 
 	// Load configuration
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		logger.Fatalf("Failed to load configuration: %v", err)
 	}
+	
+	// Print configuration
+	logger.Printf("Configuration loaded: serviceName=%s, collectorURL=%s", 
+		cfg.Telemetry.ServiceName, cfg.Telemetry.CollectorURL)
 
-	// Initialize OpenTelemetry
-	shutdown, err := telemetry.InitTracer(cfg)
+	// Initialize OpenTelemetry and get propagated context
+	shutdown, propagatedCtx, err := telemetry.InitTracer(cfg)
 	if err != nil {
 		logger.Fatalf("Failed to initialize telemetry: %v", err)
 	}
 	defer shutdown(context.Background())
 
 	// Create a context that will be canceled on SIGINT or SIGTERM
-	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	// Use the propagated context as the parent context
+	ctx, cancel := signal.NotifyContext(propagatedCtx, syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
 	// Create calculator and result sender
