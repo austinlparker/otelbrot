@@ -1,9 +1,9 @@
 # OTEL-Monte Makefile
 
-.PHONY: test test-frontend test-orchestrator test-worker clean build docker-build deploy run-worker install-cert-manager install-otel-operator install-dependencies create-honeycomb-secret create-namespace k8s-cleanup k8s-cleanup-all
+.PHONY: test test-frontend test-orchestrator test-worker test-go-worker clean build build-go-worker docker-build deploy run-worker run-go-worker install-cert-manager install-otel-operator install-dependencies create-honeycomb-secret create-namespace k8s-cleanup k8s-cleanup-all
 
 # Run all tests
-test: test-frontend test-orchestrator test-worker
+test: test-frontend test-orchestrator test-worker test-go-worker
 
 # Build all components
 build:
@@ -12,6 +12,12 @@ build:
 	cd commons && ../worker/mvnw clean install -q -DskipTests
 	cd orchestrator && ./mvnw clean install -q -DskipTests
 	cd worker && ./mvnw clean install -q -DskipTests
+	$(MAKE) build-go-worker
+
+# Build Go worker
+build-go-worker:
+	@echo "Building Go worker..."
+	cd go-worker && go build ./cmd/worker
 
 # Run frontend tests (lint only, but don't fail on warnings)
 test-frontend:
@@ -28,6 +34,11 @@ test-worker:
 	@echo "Running worker tests..."
 	cd worker && ./mvnw test -q -Dlogging.level.root=ERROR -Dlogging.level.org.springframework=ERROR -Dtest="!WorkerApplicationTests"
 
+# Run Go worker tests
+test-go-worker:
+	@echo "Running Go worker tests..."
+	cd go-worker && go test ./...
+
 # Clean all build outputs
 clean:
 	@echo "Cleaning project..."
@@ -35,6 +46,7 @@ clean:
 	cd commons && ../worker/mvnw clean -q
 	cd orchestrator && ./mvnw clean -q
 	cd worker && ./mvnw clean -q
+	cd go-worker && rm -f worker
 
 # Build Docker images
 docker-build: build
@@ -42,6 +54,7 @@ docker-build: build
 	docker build -t otelbrot/frontend:latest -f ./frontend/Dockerfile ./frontend
 	docker build -t otelbrot/orchestrator:latest -f ./orchestrator/Dockerfile .
 	docker build -t otelbrot/worker:latest -f ./worker/Dockerfile .
+	docker build -t otelbrot/go-worker:latest -f ./go-worker/Dockerfile ./go-worker
 	@echo "Docker images built."
 
 # Install cert-manager
@@ -89,7 +102,8 @@ deploy: docker-build install-dependencies create-honeycomb-secret
 	kubectl apply -f k8s/namespace.yaml
 	kubectl apply -f k8s/redis.yaml
 	kubectl apply -f k8s/rbac.yaml
-	kubectl apply -f k8s/otel-configmap.yaml
+	kubectl apply -f k8s/otel-agent-orchestrator-config.yaml
+	kubectl apply -f k8s/otel-agent-worker-config.yaml
 	kubectl apply -f k8s/orchestrator.yaml
 	kubectl apply -f k8s/frontend.yaml
 	kubectl apply -f k8s/opentelemetry.yaml
@@ -101,6 +115,12 @@ run-worker:
 	kubectl apply -f k8s/worker.yaml
 	@echo "Worker job created. Use 'kubectl get jobs -n otelbrot' to check status."
 
+# Run a Go worker deployment
+run-go-worker:
+	@echo "Creating Go worker deployment..."
+	kubectl apply -f k8s/go-worker.yaml
+	@echo "Go worker deployment created. Use 'kubectl get deployment -n otelbrot' to check status."
+
 # Clean up Kubernetes resources (keeps namespace)
 k8s-cleanup:
 	@echo "Cleaning up Kubernetes resources..."
@@ -108,8 +128,10 @@ k8s-cleanup:
 	-kubectl delete -f k8s/frontend.yaml --ignore-not-found
 	-kubectl delete -f k8s/orchestrator.yaml --ignore-not-found
 	-kubectl delete -f k8s/redis.yaml --ignore-not-found
+	-kubectl delete -f k8s/go-worker.yaml --ignore-not-found
 	-kubectl delete -f k8s/opentelemetry.yaml --ignore-not-found
-	-kubectl delete -f k8s/otel-configmap.yaml --ignore-not-found
+	-kubectl delete -f k8s/otel-agent-orchestrator-config.yaml --ignore-not-found
+	-kubectl delete -f k8s/otel-agent-worker-config.yaml --ignore-not-found
 	@echo "Deleting jobs and pods..."
 	-kubectl delete jobs --all -n otelbrot --ignore-not-found
 	-kubectl delete pods --all -n otelbrot --ignore-not-found
@@ -135,7 +157,9 @@ help:
 	@echo "  test-frontend         Run frontend tests"
 	@echo "  test-orchestrator     Run orchestrator tests"
 	@echo "  test-worker           Run worker tests" 
+	@echo "  test-go-worker        Run Go worker tests" 
 	@echo "  build                 Build all components"
+	@echo "  build-go-worker       Build Go worker only"
 	@echo "  clean                 Clean all build outputs"
 	@echo "  docker-build          Build Docker images"
 	@echo "  install-cert-manager  Install cert-manager in Kubernetes"
@@ -143,6 +167,7 @@ help:
 	@echo "  install-dependencies  Install all dependencies"
 	@echo "  deploy                Deploy to Kubernetes (includes dependencies)"
 	@echo "  run-worker            Run a worker job in Kubernetes"
+	@echo "  run-go-worker         Run a Go worker deployment in Kubernetes"
 	@echo "  k8s-cleanup           Clean up Kubernetes resources (keeps namespace)"
 	@echo "  k8s-cleanup-all       Clean up all Kubernetes resources (including namespace)"
 	@echo "  help                  Show this help message"
