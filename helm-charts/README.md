@@ -48,6 +48,18 @@ make helm-install-otelbrot-app
 - **monitoring**: Contains the LGTM stack (Loki, Grafana, Tempo, Mimir)
 - **opentelemetry-operator-system**: Contains the OpenTelemetry Operator
 
+## RBAC Permissions
+
+The application requires specific RBAC permissions:
+
+- Orchestrator service account needs permissions to manage jobs:
+  - `get`, `list`, `watch`, `create`, `delete`, `deletecollection` for jobs
+  - Used for job creation and cleanup during fractal rendering
+
+- OpenTelemetry collectors need permissions to monitor Kubernetes:
+  - Access to pods, services, nodes, etc. for collecting metrics
+  - Set up through both operator and standalone collector configurations
+
 ## Cleanup
 
 To clean up all resources:
