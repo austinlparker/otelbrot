@@ -1,0 +1,30 @@
+## OpenTelemetry Operator Helm Chart Values
+## https://github.com/open-telemetry/opentelemetry-helm-charts/tree/main/charts/opentelemetry-operator
+
+# Default values for OpenTelemetry Operator
+nameOverride: "opentelemetry-operator"
+fullnameOverride: "opentelemetry-operator"
+
+replicaCount: 1
+
+manager:
+  image:
+    repository: ghcr.io/open-telemetry/opentelemetry-operator/opentelemetry-operator
+    tag: ""
+  collectorImage:
+    repository: otel/opentelemetry-collector-contrib
+    tag: "0.121.0"
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 100m
+      memory: 64Mi
+  serviceAccount:
+    create: true
+
+admissionWebhooks:
+  create: true
+  certManager:
+    enabled: true

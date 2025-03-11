@@ -19,7 +19,6 @@
     
     <modules>
         <module>commons</module>
-        <module>worker</module>
         <module>orchestrator</module>
     </modules>
 </project>

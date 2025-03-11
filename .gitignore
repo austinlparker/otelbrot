@@ -70,6 +70,12 @@ tmp/
 .env.*
 !.env.example
 
+# Deprecated components
+# These are kept for reference but should not be used
+k8s/*.yaml
+worker/*
+!worker/README.md
+
 # Spring Boot
 .spring-boot-devtools.restart.trigger
 
