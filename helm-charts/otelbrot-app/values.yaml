@@ -1,0 +1,68 @@
+# Default values for otelbrot-app
+# This is a YAML-formatted file.
+
+nameOverride: ""
+fullnameOverride: ""
+
+redis:
+  enabled: true
+  image:
+    repository: redis
+    tag: alpine
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 6379
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+orchestrator:
+  image:
+    repository: otelbrot/orchestrator
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8080
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 768Mi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+  env:
+    - name: SPRING_DATA_REDIS_HOST
+      value: "redis"
+    - name: SPRING_DATA_REDIS_PORT
+      value: "6379"
+    - name: SPRING_PROFILES_ACTIVE
+      value: "dev"
+    - name: OTEL_SERVICE_NAME
+      value: "otelbrot-orchestrator"
+    - name: OTEL_EXPERIMENTAL_CONFIG_FILE
+      value: "/etc/otel/otel-agent-config.yaml"
+
+frontend:
+  image:
+    repository: otelbrot/frontend
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 80
+  resources:
+    limits:
+      cpu: 500m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  env:
+    - name: ORCHESTRATOR_URL
+      value: "http://orchestrator:8080"

@@ -1,0 +1,11 @@
+{{- range $name, $namespace := .Values.namespaces }}
+{{- if $namespace.create }}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- toYaml $namespace.labels | nindent 4 }}
+{{- end }}
+{{- end }}

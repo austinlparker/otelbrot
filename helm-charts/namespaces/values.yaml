@@ -1,0 +1,16 @@
+# Namespaces configuration
+
+namespaces:
+  # Application namespace
+  otelbrot:
+    create: true
+    labels:
+      app.kubernetes.io/part-of: otelbrot
+    
+  # Monitoring namespace
+  monitoring:
+    create: true
+    labels:
+      app.kubernetes.io/part-of: otelbrot-monitoring
+
+  # You can add more namespaces here as needed

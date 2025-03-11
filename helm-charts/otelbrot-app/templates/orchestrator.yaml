@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orchestrator
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: orchestrator
+  annotations:
+    instrumentation.opentelemetry.io/inject-java: "{{ .Release.Namespace }}/java-agent"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: orchestrator
+  template:
+    metadata:
+      labels:
+        app: orchestrator
+      annotations:
+        instrumentation.opentelemetry.io/inject-java: "{{ .Release.Namespace }}/java-agent"
+    spec:
+      serviceAccountName: orchestrator-sa
+      volumes:
+      - name: otel-agent-config-volume
+        configMap:
+          name: otel-agent-config
+      containers:
+      - name: orchestrator
+        image: {{ .Values.orchestrator.image.repository }}:{{ .Values.orchestrator.image.tag }}
+        imagePullPolicy: {{ .Values.orchestrator.image.pullPolicy }}
+        ports:
+        - containerPort: 8080
+        env:
+{{ toYaml .Values.orchestrator.env | indent 8 }}
+        volumeMounts:
+        - name: otel-agent-config-volume
+          mountPath: /etc/otel
+        resources:
+{{ toYaml .Values.orchestrator.resources | indent 10 }}
+        readinessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8080
+          initialDelaySeconds: 30
+          timeoutSeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8080
+          initialDelaySeconds: 60
+          timeoutSeconds: 5
+          periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orchestrator
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: orchestrator
+spec:
+  ports:
+  - port: {{ .Values.orchestrator.service.port }}
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: orchestrator
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: orchestrator-db-init
+  namespace: {{ .Release.Namespace }}
+spec:
+  ttlSecondsAfterFinished: 100
+  template:
+    spec:
+      containers:
+      - name: wait-for-redis
+        image: busybox:1.28
+        command: ['/bin/sh', '-c', 'until nc -z redis 6379; do echo waiting for redis; sleep 2; done; echo "Redis is up"']
+      restartPolicy: OnFailure

@@ -1,0 +1,1 @@
+{{- /* We remove the namespace template as we rely on the namespace being created ahead of time by the Makefile */ -}}
