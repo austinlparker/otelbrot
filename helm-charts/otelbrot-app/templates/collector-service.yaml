@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: otelbrot-collector
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: otelbrot-collector
+    {{- include "otelbrot-app.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.collector.service.type }}
+  ports:
+  - port: {{ .Values.collector.service.ports.otlp.port }}
+    targetPort: 4317
+    protocol: TCP
+    name: otlp
+  - port: {{ .Values.collector.service.ports.otlp_http.port }}
+    targetPort: 4318
+    protocol: TCP
+    name: otlp-http
+  - port: {{ .Values.collector.service.ports.metrics.port }}
+    targetPort: 8888
+    protocol: TCP
+    name: metrics
+  selector:
+    app.kubernetes.io/component: opentelemetry-collector
+    app.kubernetes.io/instance: otelbrot.otelbrot-collector
+    app.kubernetes.io/managed-by: opentelemetry-operator
+    app.kubernetes.io/part-of: opentelemetry

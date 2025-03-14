@@ -39,6 +39,10 @@ public class RenderRequest {
     @Size(min = 1, max = 50, message = "Color scheme name must be between 1 and 50 characters")
     private String colorScheme;
     
+    @Min(value = 64, message = "Tile size must be at least 64")
+    @Max(value = 512, message = "Tile size cannot exceed 512")
+    private Integer tileSize;
+    
     // Constructors
     public RenderRequest() {}
     
@@ -51,6 +55,18 @@ public class RenderRequest {
         this.width = width;
         this.height = height;
         this.colorScheme = colorScheme;
+    }
+    
+    public RenderRequest(Double centerX, Double centerY, Double zoom, Integer maxIterations, 
+                        Integer width, Integer height, String colorScheme, Integer tileSize) {
+        this.centerX = centerX;
+        this.centerY = centerY;
+        this.zoom = zoom;
+        this.maxIterations = maxIterations;
+        this.width = width;
+        this.height = height;
+        this.colorScheme = colorScheme;
+        this.tileSize = tileSize;
     }
     
     // Getters and Setters
@@ -108,5 +124,13 @@ public class RenderRequest {
     
     public void setColorScheme(String colorScheme) {
         this.colorScheme = colorScheme;
+    }
+    
+    public Integer getTileSize() {
+        return tileSize;
+    }
+    
+    public void setTileSize(Integer tileSize) {
+        this.tileSize = tileSize;
     }
 }

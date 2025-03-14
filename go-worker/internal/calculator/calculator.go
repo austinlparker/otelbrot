@@ -33,15 +33,6 @@ func NewFractalCalculator(logger *log.Logger) *FractalCalculator {
 
 // CalculateTile calculates a fractal tile based on the provided specification
 func (c *FractalCalculator) CalculateTile(ctx context.Context, spec *models.TileSpec) (*models.TileResult, error) {
-	// Extract any existing trace context
-	spanContext := trace.SpanContextFromContext(ctx)
-	if spanContext.IsValid() {
-		c.logger.Printf("Using existing trace context in calculator: traceID=%s, spanID=%s, sampled=%t", 
-			spanContext.TraceID().String(), spanContext.SpanID().String(), spanContext.IsSampled())
-	} else {
-		c.logger.Printf("No valid trace context found in calculator, creating a new trace")
-	}
-
 	ctx, span := c.tracer.Start(ctx, "FractalCalculator.CalculateTile",
 		trace.WithAttributes(
 			attribute.String("jobId", spec.JobID),
@@ -50,16 +41,9 @@ func (c *FractalCalculator) CalculateTile(ctx context.Context, spec *models.Tile
 			attribute.Int("height", spec.Height),
 			attribute.Int("maxIterations", spec.MaxIterations),
 			attribute.String("colorScheme", spec.ColorScheme),
-			attribute.Float64("xMin", spec.XMin),
-			attribute.Float64("xMax", spec.XMax),
-			attribute.Float64("yMin", spec.YMin),
-			attribute.Float64("yMax", spec.YMax),
 		))
 	defer span.End()
 
-	spanContext = span.SpanContext()
-	c.logger.Printf("Created calculation span: traceID=%s, spanID=%s", 
-		spanContext.TraceID().String(), spanContext.SpanID().String())
 	c.logger.Printf("Calculating tile for job: %s, tile: %s, dimensions: %dx%d", 
 		spec.JobID, spec.TileID, spec.Width, spec.Height)
 	startTime := time.Now()

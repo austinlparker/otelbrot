@@ -7,27 +7,29 @@ data:
   otel-agent-config.yaml: |
     # The file format version.
     file_format: "0.3"
-    
+
     # Configure if the SDK is disabled or not. This is not required to be provided to ensure the SDK isn't disabled, the default value when this is not provided is for the SDK to be enabled.
     disabled: false
-    
+
     # Configure resource for all signals.
     resource:
       # Configure resource attributes.
       attributes:
         - name: service.name
           value: orchestrator
-    
+        - name: k8s.cluster.name
+          value: otelbrot
+
     # Configure general attribute limits. See also tracer_provider.limits, logger_provider.limits.
     attribute_limits:
       # Configure max attribute count.
       attribute_count_limit: 128
-    
+
     # Configure text map context propagators.
     propagator:
       # Configure the set of propagators to include in the composite text map propagator.
       composite: [ tracecontext, baggage ]
-    
+
     # Configure tracer provider.
     tracer_provider:
       # Configure span processors.
@@ -49,7 +51,7 @@ data:
                 # Configure protocol.
                 protocol: http/protobuf
                 # Configure endpoint.
-                endpoint: http://otel-collector.{{ .Release.Namespace }}.svc.cluster.local:4318/v1/traces
+                endpoint: http://otelbrot-collector.{{ .Release.Namespace }}.svc.cluster.local:4318/v1/traces
                 # Configure compression.
                 compression: gzip
                 # Configure max time (in milliseconds) to wait for each export.
@@ -90,7 +92,7 @@ data:
           local_parent_not_sampled:
             # Configure sampler to be always_off.
             always_off: {}
-    
+
     # Configure meter provider.
     meter_provider:
       # Configure metric readers.
@@ -108,7 +110,7 @@ data:
                 # Configure protocol.
                 protocol: http/protobuf
                 # Configure endpoint.
-                endpoint: http://otel-collector.{{ .Release.Namespace }}.svc.cluster.local:4318/v1/metrics
+                endpoint: http://otelbrot-collector.{{ .Release.Namespace }}.svc.cluster.local:4318/v1/metrics
                 # Configure compression.
                 compression: gzip
                 # Configure max time (in milliseconds) to wait for each export.
@@ -118,7 +120,7 @@ data:
                 temporality_preference: cumulative
                 # Configure default histogram aggregation.
                 default_histogram_aggregation: explicit_bucket_histogram
-    
+
     # Configure logger provider.
     logger_provider:
       # Configure log record processors.
@@ -140,7 +142,7 @@ data:
                 # Configure protocol.
                 protocol: http/protobuf
                 # Configure endpoint.
-                endpoint: http://otel-collector.{{ .Release.Namespace }}.svc.cluster.local:4318/v1/logs
+                endpoint: http://otelbrot-collector.{{ .Release.Namespace }}.svc.cluster.local:4318/v1/logs
                 # Configure compression.
                 compression: gzip
                 # Configure max time (in milliseconds) to wait for each export.
@@ -150,26 +152,33 @@ data:
       limits:
         # Configure max attribute count. Overrides .attribute_limits.attribute_count_limit.
         attribute_count_limit: 128
-    
-    
+
+
     # Configure instrumentation.
     instrumentation:
       # Configure OpenTelemetry Java Agent.
       java:
+        http:
+          server:
+            capture_request_headers:
+              - "traceparent"
+              - "content-type"
+            capture_response_headers:
+              - "*"
         common:
           default-enabled: true
         # Configuration logback-appender instrumentation.
         java-util-logging:
           enabled: true
-          experimental-log-attributes: false
+          experimental-log-attributes: true
         # Configuration logback-appender instrumentation.
         logback-appender:
           enabled: true
-          experimental-log-attributes: false
+          experimental-log-attributes: true
           experimental:
-            capture-code-attributes: false
-            capture-marker-attributes: false
-            capture-key-value-pair-attributes: false
-            capture-logger-context-attributes: false
-            capture-arguments: false
-            capture-mdc-attributes: false
+            capture-code-attributes: true
+            capture-marker-attributes: true
+            capture-key-value-pair-attributes: true
+            capture-logger-context-attributes: true
+            capture-arguments: true
+            capture-mdc-attributes: true

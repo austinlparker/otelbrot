@@ -115,8 +115,12 @@ export class TileManager {
   // Track when we last did a full canvas redraw to avoid excessive redraws
   private lastRedrawTime = 0;
   
+  // Track canvas rendering state - used to control canvas clearing behavior
+  private hasPreviewBeenDrawn = false;
+  
   /**
    * Draw all the tiles with proper layering (high-res replaces low-res for same position)
+   * Uses separate canvases for preview and detailed tiles
    */
   drawAllTiles(ctx: CanvasRenderingContext2D): void {
     if (this.tileCache.size === 0) return;
@@ -135,9 +139,20 @@ export class TileManager {
       console.log(`Drawing ${this.tileCache.size} tiles`);
     }
     
-    // Clear the canvas first to ensure we start fresh
+    // Clear the main canvas
     ctx.fillStyle = 'black';
     ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    
+    // Find the preview tile first
+    let previewTile: TileData | undefined;
+    
+    // Check if there's a preview tile
+    for (const tile of this.tileCache.values()) {
+      if ((tile.tileId === "preview" || tile.tileId.includes("preview")) && tile.loaded) {
+        previewTile = tile;
+        break;
+      }
+    }
     
     // Create a position-based tracking map for tiles of each resolution level
     const positionToTilesMap = new Map<string, {
@@ -148,9 +163,14 @@ export class TileManager {
       hasHigherResolution: boolean
     }>();
     
-    // Group tiles by position and resolution level
+    // Group tiles by position and resolution level (excluding preview)
     this.tileCache.forEach(tile => {
       if (!tile.loaded) return;
+      
+      // Skip preview tile in regular tile handling
+      if (tile.tileId === "preview" || tile.tileId.includes("preview")) {
+        return;
+      }
       
       // Get or create position entry
       let posEntry = positionToTilesMap.get(tile.position);
@@ -214,25 +234,33 @@ export class TileManager {
         // Draw the image data to the temporary canvas
         tempCtx.putImageData(tile.imageData, 0, 0);
         
-        // Special handling for preview tiles
-        if (tile.tileId === "preview" || tile.tileId.includes("preview")) {
-          // Always scale preview tiles to fill the whole canvas
-          ctx.drawImage(tempCanvas, 0, 0, ctx.canvas.width, ctx.canvas.height);
-        }
-        // Or if this is a low-res tile (level 1) and we're early in the rendering process
-        else if (tile.resolution === 1 && this.tileCache.size <= 3) {
-          // Scale up initial low-res tiles
-          ctx.drawImage(tempCanvas, 0, 0, ctx.canvas.width, ctx.canvas.height);
-        } else {
-          // Normal drawing at correct position
-          ctx.drawImage(tempCanvas, tile.x, tile.y, tile.width, tile.height);
-        }
+        // Normal drawing at correct position
+        ctx.drawImage(tempCanvas, tile.x, tile.y, tile.width, tile.height);
       } catch (error) {
         console.error(`Error drawing tile at x:${tile.x}, y:${tile.y}:`, error);
       }
     };
     
-    // Draw in order of increasing resolution
+    // If we have a preview tile, draw it on the preview canvas
+    const previewCanvas = document.querySelector('.preview-canvas') as HTMLCanvasElement;
+    if (previewTile && previewCanvas) {
+      const previewCtx = previewCanvas.getContext('2d');
+      if (previewCtx) {
+        try {
+          tempCanvas.width = previewTile.width;
+          tempCanvas.height = previewTile.height;
+          tempCtx.putImageData(previewTile.imageData, 0, 0);
+          
+          // Draw preview tile scaled to fill the entire preview canvas
+          previewCtx.drawImage(tempCanvas, 0, 0, previewCanvas.width, previewCanvas.height);
+          this.hasPreviewBeenDrawn = true;
+        } catch (error) {
+          console.error('Error drawing preview tile:', error);
+        }
+      }
+    }
+    
+    // Draw detailed tiles on the main canvas
     lowResTiles.forEach(drawTile);
     medResTiles.forEach(drawTile);
     highResTiles.forEach(drawTile);
@@ -240,6 +268,18 @@ export class TileManager {
     // Only log detailed info when drawing small number of tiles to reduce console spam
     if (this.tileCache.size < 20 || now % 1000 === 0) {
       console.log(`Drew: ${lowResTiles.length} low, ${medResTiles.length} med, ${highResTiles.length} high tiles`);
+    }
+    
+    // If all tiles are loaded, hide the preview canvas
+    const regularTileCount = lowResTiles.length + medResTiles.length + highResTiles.length;
+    if (regularTileCount > 0 && this.tileCache.size > 3) {
+      // Check if we're close to completed (more than 95% of tiles loaded)
+      const isNearlyComplete = (regularTileCount / this.pendingTiles.size) > 0.95;
+      
+      if (isNearlyComplete && previewCanvas && this.hasPreviewBeenDrawn) {
+        // Hide the preview canvas when we're nearly done
+        previewCanvas.style.display = 'none';
+      }
     }
   }
   
@@ -287,11 +327,17 @@ export class TileManager {
     } else {
       // Clear everything
       this.tileCache.clear();
+      // Reset preview flag when fully clearing the cache
+      this.hasPreviewBeenDrawn = false;
     }
     
     this.pendingTiles.clear();
     console.log(`Cleared tile cache (preservePreview=${preservePreview})`);
   }
+  
+  // Batch processing for tiles
+  private pendingRedraw = false;
+  private redrawTimeoutId: number | null = null;
   
   /**
    * Decode Base64 image data to ImageData
@@ -305,7 +351,10 @@ export class TileManager {
     resolution: number = 1,
     tileId: string
   ): ImageData {
-    console.log(`Decoding image data for tile at x:${x}, y:${y}, size:${width}x${height}, resolution:${resolution}`);
+    // Only log for the first few tiles to reduce console spam
+    if (this.tileCache.size < 10) {
+      console.log(`Decoding image data for tile at x:${x}, y:${y}, size:${width}x${height}, resolution:${resolution}`);
+    }
     
     // Create a new canvas for the image
     const canvas = document.createElement('canvas');
@@ -337,7 +386,6 @@ export class TileManager {
         // Get the image data from the canvas
         try {
           const data = ctx.getImageData(0, 0, width, height);
-          console.log(`Successfully decoded image for tile ${tileId} at x:${x}, y:${y}, resolution:${resolution}`);
           
           // Mark the tile as loaded and update all its properties
           const tile = this.tileCache.get(tileId);
@@ -350,16 +398,8 @@ export class TileManager {
             // No need to update tileId as it's already set
           }
           
-          // Trigger a redraw of the main canvas
-          const mainCanvas = document.querySelector('.fractal-canvas') as HTMLCanvasElement;
-          if (mainCanvas) {
-            const mainCtx = mainCanvas.getContext('2d');
-            if (mainCtx) {
-              // Request to draw all tiles in the correct order
-              this.drawAllTiles(mainCtx);
-              console.log(`Refreshed canvas after loading tile ${tileId}`);
-            }
-          }
+          // Schedule a batch redraw instead of immediate redraw
+          this.scheduleBatchRedraw();
           
           resolve(data);
         } catch (e) {
@@ -392,7 +432,6 @@ export class TileManager {
       try {
         ctx.drawImage(img, 0, 0);
         imageData = ctx.getImageData(0, 0, width, height);
-        console.log(`Image was already loaded for tile ${tileId}`);
         
         // Mark the tile as loaded right away and ensure coordinates are set
         const tile = this.tileCache.get(tileId);
@@ -403,6 +442,13 @@ export class TileManager {
           tile.position = positionKey;
         }
         
+        // Checking if this is a preview tile - prioritize drawing immediately
+        if (tileId === "preview" || tileId.includes("preview")) {
+          this.scheduleBatchRedraw(true); // Force immediate redraw for preview
+        } else {
+          this.scheduleBatchRedraw(); // Schedule batch redraw
+        }
+        
         return imageData;
       } catch {
         console.warn('Image not fully loaded yet, creating empty ImageData');
@@ -410,9 +456,54 @@ export class TileManager {
         return imageData;
       }
     } else {
-      console.log(`Creating empty ImageData for tile ${tileId} while waiting for image to load`);
       imageData = new ImageData(width, height);
       return imageData;
+    }
+  }
+  
+  /**
+   * Schedule a batch redraw to minimize canvas updates
+   */
+  private scheduleBatchRedraw(immediate: boolean = false): void {
+    if (this.pendingRedraw && !immediate) {
+      // Already scheduled, no need to schedule again unless immediate
+      return;
+    }
+    
+    this.pendingRedraw = true;
+    
+    // Clear existing timeout if it exists
+    if (this.redrawTimeoutId !== null) {
+      window.clearTimeout(this.redrawTimeoutId);
+      this.redrawTimeoutId = null;
+    }
+    
+    // For immediate redraws (like preview tiles), do it right away
+    if (immediate) {
+      this.processBatchRedraw();
+      return;
+    }
+    
+    // Schedule a redraw with a short delay to batch multiple tile updates
+    this.redrawTimeoutId = window.setTimeout(() => {
+      this.processBatchRedraw();
+    }, 100); // 100ms delay to batch updates
+  }
+  
+  /**
+   * Process the batched redraw
+   */
+  private processBatchRedraw(): void {
+    this.pendingRedraw = false;
+    this.redrawTimeoutId = null;
+    
+    // Find the main canvas and update it
+    const mainCanvas = document.querySelector('.fractal-canvas') as HTMLCanvasElement;
+    if (mainCanvas) {
+      const mainCtx = mainCanvas.getContext('2d');
+      if (mainCtx) {
+        this.drawAllTiles(mainCtx);
+      }
     }
   }
   

@@ -6,7 +6,7 @@ import './ControlPanel.css'
 interface ControlPanelProps {
   viewState: ViewState
   renderState: RenderState
-  onParamsChange: (maxIterations: number, colorScheme: string) => void
+  onParamsChange: (maxIterations: number, colorScheme: string, tileSize: number) => void
   onRender: () => void
   onReset: () => void
 }
@@ -20,6 +20,7 @@ export function ControlPanel({
 }: ControlPanelProps) {
   const [maxIterations, setMaxIterations] = useState(viewState.maxIterations)
   const [colorScheme, setColorScheme] = useState(viewState.colorScheme)
+  const [tileSize, setTileSize] = useState(viewState.tileSize)
   
   // Format progress percentage
   const progressPercent = renderState.progress.toFixed(1)
@@ -46,7 +47,7 @@ export function ControlPanel({
   
   // Apply changes when controls are modified
   const applyChanges = () => {
-    onParamsChange(maxIterations, colorScheme)
+    onParamsChange(maxIterations, colorScheme, tileSize)
   }
   
   return (
@@ -93,7 +94,7 @@ export function ControlPanel({
             value={colorScheme}
             onChange={(e) => {
               setColorScheme(e.target.value)
-              onParamsChange(maxIterations, e.target.value)
+              onParamsChange(maxIterations, e.target.value, tileSize)
             }}
           >
             <option value="classic">Classic</option>
@@ -102,6 +103,25 @@ export function ControlPanel({
             <option value="grayscale">Grayscale</option>
             <option value="rainbow">Rainbow</option>
           </select>
+        </div>
+
+        <div className="control-group">
+          <label htmlFor="tileSize">Tile Size</label>
+          <input
+            id="tileSize"
+            type="range"
+            min="64"
+            max="512"
+            step="32"
+            value={tileSize}
+            onChange={(e) => setTileSize(parseInt(e.target.value))}
+            onMouseUp={applyChanges}
+          />
+          <div className="range-values">
+            <span>64</span>
+            <span className="value">{tileSize}</span>
+            <span>512</span>
+          </div>
         </div>
       </div>
       

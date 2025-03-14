@@ -7,6 +7,7 @@ export class ViewState {
   zoom: number
   maxIterations: number
   colorScheme: string
+  tileSize: number
   currentJobId: string | null
   tileCache: Map<string, ImageData>
 
@@ -17,6 +18,7 @@ export class ViewState {
     this.zoom = 2.0
     this.maxIterations = 100
     this.colorScheme = 'classic'
+    this.tileSize = 256
     this.currentJobId = null
     this.tileCache = new Map<string, ImageData>()
   }
@@ -30,6 +32,7 @@ export class ViewState {
     this.zoom = 2.0
     this.colorScheme = 'classic'
     this.maxIterations = 100
+    this.tileSize = 256
     this.clearCache()
   }
 
@@ -71,9 +74,10 @@ export class ViewState {
   /**
    * Update the render parameters
    */
-  updateParams(maxIterations: number, colorScheme: string): void {
+  updateParams(maxIterations: number, colorScheme: string, tileSize: number): void {
     this.maxIterations = maxIterations
     this.colorScheme = colorScheme
+    this.tileSize = tileSize
     // When params change, we need a new render
     this.clearCache()
   }
@@ -110,6 +114,7 @@ export class ViewState {
     width: number;
     height: number;
     colorScheme: string;
+    tileSize: number;
   } {
     return {
       centerX: this.centerX,
@@ -118,7 +123,8 @@ export class ViewState {
       maxIterations: this.maxIterations,
       width,
       height,
-      colorScheme: this.colorScheme
+      colorScheme: this.colorScheme,
+      tileSize: this.tileSize
     }
   }
 }

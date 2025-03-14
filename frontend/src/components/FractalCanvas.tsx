@@ -3,6 +3,13 @@ import { ViewState } from '../state/ViewState'
 import { RenderState } from '../state/RenderState'
 import './FractalCanvas.css'
 
+// Define TileManager interface for TypeScript typing
+declare global {
+  interface Window {
+    tileManager: any
+  }
+}
+
 interface FractalCanvasProps {
   viewState: ViewState
   renderState: RenderState
@@ -17,6 +24,7 @@ export function FractalCanvas({
   onPan
 }: FractalCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const previewCanvasRef = useRef<HTMLCanvasElement>(null)
   const isDraggingRef = useRef(false)
   const lastMousePosRef = useRef({ x: 0, y: 0 })
   
@@ -356,6 +364,18 @@ export function FractalCanvas({
   return (
     <div className="canvas-wrapper">
       <div className="fractal-canvas-container">
+        {/* Preview canvas layer - will only show the preview image */}
+        <canvas
+          ref={previewCanvasRef}
+          className="preview-canvas"
+          width={800}
+          height={600}
+          style={{
+            display: renderState.isComplete() ? 'none' : 'block'
+          }}
+        />
+        
+        {/* Main canvas for detailed tiles */}
         <canvas
           ref={canvasRef}
           className="fractal-canvas"
@@ -366,6 +386,10 @@ export function FractalCanvas({
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseLeave}
           tabIndex={0}
+          style={{
+            position: 'relative',
+            zIndex: 2
+          }}
         />
         
         {/* Navigation controls */}

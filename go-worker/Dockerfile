@@ -26,10 +26,17 @@ WORKDIR /app
 
 # Copy the binary from builder stage
 COPY --from=builder /app/worker .
-COPY --from=builder /app/config.json .
 
-# Create config directory
-RUN mkdir -p /app/config
+# Set default environment variables
+ENV SERVICE_NAME="go-worker" \
+    MAX_WORKERS="4" \
+    QUEUE_SIZE="100" \
+    OTEL_EXPORTER_OTLP_ENDPOINT="localhost:4317" \
+    TRACE_SAMPLING_RATIO="1.0" \
+    ORCHESTRATOR_URL="http://localhost:8080"
 
-# Run the worker with support for optional config
-ENTRYPOINT ["/app/worker", "--config=/app/config.json"]
+# Expose relevant ports
+EXPOSE 8081
+
+# Run the worker
+ENTRYPOINT ["/app/worker"]

@@ -1,0 +1,140 @@
+## OpenTelemetry Gateway Collector Helm Chart Values
+## Based on https://github.com/open-telemetry/opentelemetry-helm-charts/tree/main/charts/opentelemetry-collector
+
+# Default values for Gateway OpenTelemetry Collector
+nameOverride: "otel-gateway-collector"
+fullnameOverride: "otel-gateway-collector"
+
+mode: daemonset  # Run as a DaemonSet on every node
+
+image:
+  repository: otel/opentelemetry-collector-contrib
+  tag: "0.121.0"
+  pullPolicy: IfNotPresent
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 1Gi
+  requests:
+    cpu: 100m
+    memory: 200Mi
+
+serviceAccount:
+  create: true
+  name: "otel-gateway-collector"
+
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8888"
+
+extraEnvs:
+  - name: HONEYCOMB_API_KEY
+    valueFrom:
+      secretKeyRef:
+        name: honeycomb-api-key
+        key: api-key
+  - name: K8S_NODE_NAME
+    valueFrom:
+      fieldRef:
+        fieldPath: spec.nodeName
+
+# Enable presets for Kubernetes monitoring - the gateway collector is responsible for all collection
+presets:
+  # Collect container logs including job logs
+  logsCollection:
+    enabled: true
+    includeCollectorLogs: false
+  
+  # Add Kubernetes metadata to all telemetry
+  kubernetesAttributes:
+    enabled: true
+    extractAllPodLabels: true
+    extractAllPodAnnotations: true
+  
+  # Collect node-level metrics from kubelet
+  kubeletMetrics:
+    enabled: true
+  
+  # Collect host metrics
+  hostMetrics:
+    enabled: true
+    
+ports:
+  otlp:
+    enabled: true
+    containerPort: 4317
+    servicePort: 4317
+    protocol: TCP
+  otlp-http:
+    enabled: true
+    containerPort: 4318
+    servicePort: 4318
+    protocol: TCP
+  metrics:
+    enabled: true
+    containerPort: 8888
+    servicePort: 8888
+    protocol: TCP
+
+service:
+  type: ClusterIP
+
+config:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+
+  processors:
+    memory_limiter:
+      check_interval: 1s
+      limit_percentage: 75
+      spike_limit_percentage: 15
+    batch:
+      send_batch_size: 10000
+      timeout: 10s
+    resource:
+      attributes:
+        - key: service.name
+          value: otel-gateway-collector
+          action: insert
+        - key: k8s.cluster.name
+          value: otelbrot
+          action: upsert
+        - key: k8s.node.name
+          from_attribute: K8S_NODE_NAME
+          action: upsert
+
+  exporters:
+    otlphttp/lgtm:
+      endpoint: http://lgtm-gateway.monitoring.svc.cluster.local:4318
+      tls:
+        insecure: true
+      headers:
+        X-Scope-OrgID: "1"
+    otlp/honeycomb:
+      endpoint: api.honeycomb.io:443
+      headers:
+        x-honeycomb-team: ${env:HONEYCOMB_API_KEY}
+    debug:
+      verbosity: detailed
+
+  service:
+    pipelines:
+      # Preset-based receivers (filelogreceiver, kubeletstats, hostmetrics) will be added automatically
+      metrics:
+        receivers: [otlp]
+        processors: [memory_limiter, resource, batch]
+        exporters: [otlphttp/lgtm, otlp/honeycomb, debug]
+      traces:
+        receivers: [otlp]
+        processors: [memory_limiter, resource, batch]
+        exporters: [otlphttp/lgtm, otlp/honeycomb, debug]
+      logs:
+        receivers: [otlp]
+        processors: [memory_limiter, resource, batch]
+        exporters: [otlphttp/lgtm, otlp/honeycomb, debug]

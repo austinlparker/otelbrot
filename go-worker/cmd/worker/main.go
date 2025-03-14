@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"log"
 	"os"
@@ -17,9 +16,7 @@ import (
 )
 
 func main() {
-	// Parse command line flags
-	configPath := flag.String("config", "", "path to config file")
-	otelConfigPath := flag.String("otel-config", "", "path to OpenTelemetry config file")
+	// Parse command line flags - keep minimal flags for debugging
 	verbose := flag.Bool("verbose", false, "enable verbose logging")
 	flag.Parse()
 
@@ -36,45 +33,29 @@ func main() {
 		}
 	}
 
-	// Check for trace context
-	traceParent := os.Getenv("TRACEPARENT")
-	if traceParent != "" {
-		logger.Printf("Found TRACEPARENT: %s", traceParent)
-	} else {
-		logger.Printf("No TRACEPARENT environment variable found")
-	}
-
-	// Set OpenTelemetry config file path if provided via flag
-	if *otelConfigPath != "" {
-		os.Setenv("OTEL_CONFIG_FILE", *otelConfigPath)
-		logger.Printf("Using OpenTelemetry config from: %s", *otelConfigPath)
-	}
-
-	// Load configuration
-	cfg, err := config.Load(*configPath)
+	// Load configuration from environment variables
+	cfg, err := config.Load()
 	if err != nil {
 		logger.Fatalf("Failed to load configuration: %v", err)
 	}
-	
-	// Print configuration
-	logger.Printf("Configuration loaded: serviceName=%s, collectorURL=%s", 
-		cfg.Telemetry.ServiceName, cfg.Telemetry.CollectorURL)
 
-	// Initialize OpenTelemetry and get propagated context
-	shutdown, propagatedCtx, err := telemetry.InitTracer(cfg)
+	// Initialize telemetry system
+	tel, ctx, err := telemetry.Setup(cfg)
 	if err != nil {
 		logger.Fatalf("Failed to initialize telemetry: %v", err)
 	}
-	defer shutdown(context.Background())
 
 	// Create a context that will be canceled on SIGINT or SIGTERM
-	// Use the propagated context as the parent context
-	ctx, cancel := signal.NotifyContext(propagatedCtx, syscall.SIGINT, syscall.SIGTERM)
+	ctx, cancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
+
+	// Create a span for the entire worker process
+	ctx, span := tel.StartSpan(ctx, "worker_process")
+	defer span.End()
 
 	// Create calculator and result sender
 	calc := calculator.NewFractalCalculator(logger)
-	resultSender := sender.NewResultSender(cfg.Orchestrator.URL, logger)
+	resultSender := sender.NewResultSender(cfg.Orchestrator.URL, logger, tel)
 
 	// Try to get tile spec from environment variables
 	tileSpec, err := models.NewTileSpecFromEnvironment()
@@ -88,6 +69,7 @@ func main() {
 	startTime := time.Now()
 	result, err := calc.CalculateTile(ctx, tileSpec)
 	if err != nil {
+		span.RecordError(err)
 		logger.Fatalf("Failed to calculate tile: %v", err)
 	}
 
@@ -95,8 +77,24 @@ func main() {
 
 	// Send the result
 	if err := resultSender.SendResult(ctx, result); err != nil {
+		span.RecordError(err)
 		logger.Fatalf("Failed to send result: %v", err)
 	}
 
-	logger.Println("Result sent successfully, exiting")
+	logger.Println("Result sent successfully, finishing worker process")
+
+	// End main span
+	span.End()
+
+	// Cancel the main context to signal that we're done with the main work
+	cancel()
+
+	// Shut down telemetry with timeout
+	logger.Println("Shutting down telemetry, waiting for spans to flush...")
+	shutdownErr := tel.ShutdownWithTimeout(5 * time.Second)
+	if shutdownErr != nil {
+		logger.Printf("Warning: Error during telemetry shutdown: %v", shutdownErr)
+	}
+
+	logger.Println("Worker completed successfully")
 }

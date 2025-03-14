@@ -1,55 +1,121 @@
 .fractal-explorer {
-  max-width: 920px;
+  max-width: 960px;
   margin: 0 auto;
-  padding: 30px 20px;
+  padding: var(--spacing-lg) var(--spacing-md);
   display: flex;
   flex-direction: column;
   align-items: center;
 }
 
+/* Header with theme toggle */
+.app-header {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-lg);
+  position: relative;
+}
+
 .fractal-explorer h1 {
-  text-align: center;
-  margin-bottom: 20px;
+  margin-bottom: 0;
   color: var(--text-color);
   display: flex;
   align-items: center;
   gap: 12px;
-  font-size: 2.6em;
+  font-size: clamp(1.8rem, 4vw, 2.4rem);
+  position: relative;
+  flex-grow: 1;
+  justify-content: center;
 }
 
 .fractal-explorer h1::before {
   content: "";
   display: inline-block;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
   border-radius: 50%;
-  margin-right: 8px;
+  box-shadow: var(--shadow-sm);
+  transition: var(--transition);
 }
 
 .fractal-explorer h1::after {
   left: 50%;
   transform: translateX(-50%);
   width: 80px;
+  transition: var(--transition);
 }
 
+/* Theme toggle button */
+.theme-toggle {
+  position: relative;
+  background: transparent;
+  color: var(--text-color);
+  border: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: var(--transition-fast);
+  box-shadow: none;
+  margin-left: auto;
+}
+
+.theme-toggle:hover {
+  background-color: rgba(var(--primary-color-rgb), 0.1);
+  transform: none;
+  box-shadow: none;
+}
+
+.theme-toggle:active {
+  background-color: rgba(var(--primary-color-rgb), 0.2);
+}
+
+.theme-toggle svg {
+  transition: transform 0.5s cubic-bezier(0.68, -0.6, 0.32, 1.6);
+}
+
+.theme-toggle:hover svg {
+  transform: rotate(15deg);
+}
+
+/* Description text */
 .app-description {
   text-align: center;
   max-width: 600px;
-  margin: 0 auto 30px;
-  color: var(--light-text);
-  font-size: 1.1em;
+  margin: 0 auto var(--spacing-xl);
+  color: var(--text-secondary);
+  font-size: 1.1rem;
   line-height: 1.6;
+  transition: var(--transition);
 }
 
+/* Cards and panels with proper dark mode support */
+.card, 
+.panel {
+  background-color: var(--card-background);
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow);
+  padding: var(--spacing-md);
+  border: 1px solid var(--card-border);
+  transition: var(--transition);
+}
+
+/* Footer styling */
 .app-footer {
-  margin-top: 40px;
+  margin-top: var(--spacing-xl);
   text-align: center;
-  color: var(--light-text);
-  font-size: 0.9em;
-  padding: 20px 0;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  padding: var(--spacing-md) 0;
   width: 100%;
-  border-top: 1px solid rgba(0,0,0,0.05);
+  border-top: 1px solid var(--divider-color);
+  transition: var(--transition);
 }
 
 .otel-branding {
@@ -60,10 +126,29 @@
 }
 
 .otel-logo {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
   padding: 0 4px;
+  transition: var(--transition);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .fractal-explorer {
+    padding: var(--spacing-md) var(--spacing-sm);
+  }
+  
+  .app-header {
+    flex-direction: column;
+    gap: var(--spacing-sm);
+  }
+  
+  .theme-toggle {
+    position: absolute;
+    top: 0;
+    right: 0;
+  }
 }

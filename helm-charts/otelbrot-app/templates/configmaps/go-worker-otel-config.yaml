@@ -16,6 +16,8 @@ data:
           value: go-worker
         - name: service.version
           value: 0.1.0
+        - name: k8s.cluster.name
+          value: otelbrot
 
     # Context propagation
     propagator:
@@ -27,25 +29,13 @@ data:
         parent_based:
           root:
             always_on: {}
-          remote_parent_sampled:
-            always_on: {}
-          remote_parent_not_sampled:
-            always_off: {}
-          local_parent_sampled:
-            always_on: {}
-          local_parent_not_sampled:
-            always_off: {}
 
       processors:
-        - batch:
-            schedule_delay: 5000
-            export_timeout: 30000
-            max_queue_size: 2048
-            max_export_batch_size: 512
+        - simple:
             exporter:
               otlp:
                 protocol: http/protobuf
-                endpoint: http://otel-collector.{{ .Release.Namespace }}.svc.cluster.local:4318/v1/traces
+                endpoint: http://otelbrot-collector.{{ .Release.Namespace }}.svc.cluster.local:4318/v1/traces
                 compression: gzip
                 timeout: 10000
                 headers: []
@@ -61,12 +51,12 @@ data:
     meter_provider:
       readers:
         - periodic:
-            interval: 60000
+            interval: 1000
             timeout: 30000
             exporter:
               otlp:
                 protocol: http/protobuf
-                endpoint: http://otel-collector.{{ .Release.Namespace }}.svc.cluster.local:4318/v1/metrics
+                endpoint: http://otelbrot-collector.{{ .Release.Namespace }}.svc.cluster.local:4318/v1/metrics
                 compression: gzip
                 timeout: 10000
                 headers: []
@@ -76,15 +66,11 @@ data:
     # Logger provider configuration
     logger_provider:
       processors:
-        - batch:
-            schedule_delay: 1000
-            export_timeout: 30000
-            max_queue_size: 2048
-            max_export_batch_size: 512
+        - simple:
             exporter:
               otlp:
                 protocol: http/protobuf
-                endpoint: http://otel-collector.{{ .Release.Namespace }}.svc.cluster.local:4318/v1/logs
+                endpoint: http://otelbrot-collector.{{ .Release.Namespace }}.svc.cluster.local:4318/v1/logs
                 compression: gzip
                 timeout: 10000
                 headers: []

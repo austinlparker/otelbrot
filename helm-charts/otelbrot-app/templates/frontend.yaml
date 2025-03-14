@@ -7,6 +7,11 @@ metadata:
     app: frontend
 spec:
   replicas: 1
+  strategy:
+    type: {{ .Values.frontend.updateStrategy.type }}
+    rollingUpdate:
+      maxUnavailable: {{ .Values.frontend.updateStrategy.maxUnavailable }}
+      maxSurge: {{ .Values.frontend.updateStrategy.maxSurge }}
   selector:
     matchLabels:
       app: frontend
@@ -14,6 +19,11 @@ spec:
     metadata:
       labels:
         app: frontend
+      annotations:
+        rollme: "{{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag }}-{{ .Release.Revision }}"
+        checksum/config: {{ include (print $.Template.BasePath "/configmaps/go-worker-otel-config.yaml") . | sha256sum }}
+        helm.sh/revision: "{{ .Release.Revision }}"
+        helm.sh/release-time: "{{ now | date "20060102150405" }}"
     spec:
       containers:
       - name: frontend

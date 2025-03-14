@@ -29,6 +29,10 @@ orchestrator:
   service:
     type: ClusterIP
     port: 8080
+  updateStrategy:
+    type: RollingUpdate
+    maxUnavailable: 0
+    maxSurge: 1
   resources:
     limits:
       cpu: 1000m
@@ -56,6 +60,10 @@ frontend:
   service:
     type: ClusterIP
     port: 80
+  updateStrategy:
+    type: RollingUpdate
+    maxUnavailable: 0
+    maxSurge: 1
   resources:
     limits:
       cpu: 500m
@@ -66,3 +74,54 @@ frontend:
   env:
     - name: ORCHESTRATOR_URL
       value: "http://orchestrator:8080"
+
+collector:
+  mode: deployment
+  replicas: 2
+  serviceAccount: otelbrot-collector
+  image:
+    repository: otel/opentelemetry-collector-contrib
+    tag: "0.121.0"
+    pullPolicy: IfNotPresent
+  resources:
+    limits:
+      cpu: 500m
+      memory: 1Gi
+    requests:
+      cpu: 100m
+      memory: 200Mi
+  config:
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+    processors:
+      memory_limiter:
+        check_interval: 1s
+        limit_percentage: 75
+        spike_limit_percentage: 15
+      batch:
+        send_batch_size: 10000
+        timeout: 10s
+      resource:
+        attributes:
+          cluster_name: otelbrot
+    exporters:
+      debug:
+        verbosity: normal
+      otlp_gateway:
+        endpoint: otel-gateway-collector.otelbrot.svc.cluster.local:4317
+        tls:
+          insecure: true
+  service:
+    type: ClusterIP
+    ports:
+      otlp:
+        port: 4317
+      otlp_http:
+        port: 4318
+      metrics:
+        port: 8888

@@ -9,6 +9,11 @@ metadata:
     instrumentation.opentelemetry.io/inject-java: "{{ .Release.Namespace }}/java-agent"
 spec:
   replicas: 1
+  strategy:
+    type: {{ .Values.orchestrator.updateStrategy.type }}
+    rollingUpdate:
+      maxUnavailable: {{ .Values.orchestrator.updateStrategy.maxUnavailable }}
+      maxSurge: {{ .Values.orchestrator.updateStrategy.maxSurge }}
   selector:
     matchLabels:
       app: orchestrator
@@ -18,6 +23,10 @@ spec:
         app: orchestrator
       annotations:
         instrumentation.opentelemetry.io/inject-java: "{{ .Release.Namespace }}/java-agent"
+        rollme: "{{ .Values.orchestrator.image.repository }}:{{ .Values.orchestrator.image.tag }}-{{ .Release.Revision }}"
+        checksum/config: {{ include (print $.Template.BasePath "/configmaps/go-worker-otel-config.yaml") . | sha256sum }}
+        helm.sh/revision: "{{ .Release.Revision }}"
+        helm.sh/release-time: "{{ now | date "20060102150405" }}"
     spec:
       serviceAccountName: orchestrator-sa
       volumes:

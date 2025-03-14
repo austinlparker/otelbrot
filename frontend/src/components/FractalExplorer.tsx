@@ -172,14 +172,17 @@ export function FractalExplorer() {
   
   // Debounced canvas redraw - use a ref to avoid recreation on each render
   const drawDebounceTimeoutRef = useRef<number | null>(null);
+  const canvasUpdatePendingRef = useRef(false);
   
   // Debounced canvas redraw function to reduce excessive redraws
-  const debouncedCanvasRedraw = () => {
+  const debouncedCanvasRedraw = (immediate: boolean = false) => {
     if (drawDebounceTimeoutRef.current !== null) {
       window.clearTimeout(drawDebounceTimeoutRef.current);
+      drawDebounceTimeoutRef.current = null;
     }
     
-    drawDebounceTimeoutRef.current = window.setTimeout(() => {
+    // For immediate redraws, skip the debouncing
+    if (immediate) {
       const canvas = document.querySelector('.fractal-canvas') as HTMLCanvasElement;
       if (!canvas) return;
       
@@ -187,9 +190,29 @@ export function FractalExplorer() {
       if (!ctx) return;
       
       tileManager.drawAllTiles(ctx);
-      console.log("Debounced canvas redraw completed");
+      canvasUpdatePendingRef.current = false;
+      return;
+    }
+    
+    // Mark that we have a pending update
+    canvasUpdatePendingRef.current = true;
+    
+    // Use a longer debounce time for better batching
+    drawDebounceTimeoutRef.current = window.setTimeout(() => {
+      // Only redraw if an update is actually pending
+      if (canvasUpdatePendingRef.current) {
+        const canvas = document.querySelector('.fractal-canvas') as HTMLCanvasElement;
+        if (!canvas) return;
+        
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        
+        tileManager.drawAllTiles(ctx);
+        console.log("Debounced canvas redraw completed");
+        canvasUpdatePendingRef.current = false;
+      }
       drawDebounceTimeoutRef.current = null;
-    }, 50); // 50ms debounce
+    }, 100); // 100ms debounce for better batching
   };
   
   // Handle tile update message from WebSocket
@@ -209,30 +232,44 @@ export function FractalExplorer() {
       return;
     }
     
-    const canvas = document.querySelector('.fractal-canvas') as HTMLCanvasElement
-    if (!canvas) {
-      console.error('Canvas element not found when handling tile update')
-      return
+    // Check if this is a preview tile
+    const isPreviewTile = message.tileId === "preview" || message.tileId.includes("preview");
+    
+    // Get the appropriate canvas based on tile type
+    let canvas;
+    if (isPreviewTile) {
+      canvas = document.querySelector('.preview-canvas') as HTMLCanvasElement;
+      // Make sure the preview canvas is visible
+      if (canvas) {
+        canvas.style.display = 'block';
+      }
+    } else {
+      canvas = document.querySelector('.fractal-canvas') as HTMLCanvasElement;
     }
     
-    const ctx = canvas.getContext('2d')
+    if (!canvas) {
+      console.error('Canvas element not found when handling tile update');
+      return;
+    }
+    
+    const ctx = canvas.getContext('2d');
     if (!ctx) {
-      console.error('Could not get 2D context from canvas')
-      return
+      console.error('Could not get 2D context from canvas');
+      return;
     }
     
     // Log tile info for debugging
     console.log(`Received tile: ${message.tileId} at x:${message.x}, y:${message.y}, size:${message.width}x${message.height}`);
     
     // Process the tile and get image data and position
-    const tileData = tileManager.addTile(message)
+    const tileData = tileManager.addTile(message);
     
     // If valid tile data was returned, schedule a redraw
     if (tileData) {
-      // Use debounced redraw to avoid excessive canvas updates
-      debouncedCanvasRedraw();
+      // Use immediate redraw for preview tiles, debounced for others
+      debouncedCanvasRedraw(isPreviewTile);
     } else {
-      console.warn(`No tile data returned for tile ${message.tileId}`)
+      console.warn(`No tile data returned for tile ${message.tileId}`);
     }
   }
   
@@ -283,8 +320,16 @@ export function FractalExplorer() {
       
       console.log("Render completed - setting loading state to false");
       
-      // Final refresh to ensure all tiles are properly rendered
-      // Wait a moment to ensure all tile data is processed
+      // Hide the preview canvas now that we're done
+      const previewCanvas = document.querySelector('.preview-canvas') as HTMLCanvasElement;
+      if (previewCanvas) {
+        previewCanvas.style.display = 'none';
+      }
+      
+      // Do an immediate final refresh to ensure all tiles are properly rendered
+      debouncedCanvasRedraw(true); // Use immediate mode
+      
+      // Then do one more after a short delay to catch any late-arriving tiles
       setTimeout(() => {
         const canvas = document.querySelector('.fractal-canvas') as HTMLCanvasElement
         if (canvas) {
@@ -293,7 +338,7 @@ export function FractalExplorer() {
             tileManager.drawAllTiles(ctx)
           }
         }
-      }, 200);
+      }, 300);
     }
   }
   
@@ -465,8 +510,8 @@ export function FractalExplorer() {
   }
   
   // Handle parameter changes
-  const handleParamsChange = (maxIterations: number, colorScheme: string) => {
-    viewState.updateParams(maxIterations, colorScheme)
+  const handleParamsChange = (maxIterations: number, colorScheme: string, tileSize: number) => {
+    viewState.updateParams(maxIterations, colorScheme, tileSize)
     // Set the operation type to param-change
     renderState.lastOperation = 'param-change'
   }
@@ -477,9 +522,68 @@ export function FractalExplorer() {
     renderState.reset()
   }
   
+  // Track the theme preference
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    // Check for saved preference first
+    if (typeof window !== 'undefined') {
+      const savedTheme = localStorage.getItem('theme');
+      if (savedTheme) {
+        return savedTheme === 'dark';
+      }
+      // Otherwise check system preference
+      return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    }
+    return false;
+  });
+  
+  // Apply the theme class to the document body
+  useEffect(() => {
+    if (isDarkMode) {
+      document.body.classList.add('dark-mode');
+    } else {
+      document.body.classList.remove('dark-mode');
+    }
+    // Save preference to localStorage
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
+    }
+  }, [isDarkMode]);
+  
+  // Toggle the theme
+  const toggleTheme = () => {
+    setIsDarkMode(!isDarkMode);
+  };
+
   return (
     <div className="fractal-explorer">
-      <h1>OTelBrot Explorer</h1>
+      <div className="app-header">
+        <h1>OTelBrot Explorer</h1>
+        
+        <button 
+          onClick={toggleTheme} 
+          className="theme-toggle" 
+          title={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
+          aria-label={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
+        >
+          {isDarkMode ? (
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="5"></circle>
+              <line x1="12" y1="1" x2="12" y2="3"></line>
+              <line x1="12" y1="21" x2="12" y2="23"></line>
+              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+              <line x1="1" y1="12" x2="3" y2="12"></line>
+              <line x1="21" y1="12" x2="23" y2="12"></line>
+              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+              <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+            </svg>
+          ) : (
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+            </svg>
+          )}
+        </button>
+      </div>
       
       <div className="app-description">
         Explore the Mandelbrot set through distributed OpenTelemetry rendering. Select areas to zoom in by holding Shift and dragging or use the arrow keys.

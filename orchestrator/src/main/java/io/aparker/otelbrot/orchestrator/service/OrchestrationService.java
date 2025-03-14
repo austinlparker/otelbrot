@@ -143,8 +143,6 @@ public class OrchestrationService {
         @SpanAttribute("tile.id") String tileId,
         TileResult result
     ) {
-        Span.current().setAttribute("service.name", "otelbrot-orchestrator");
-
         logger.info(
             "Processing tile result for job: {}, tile: {}",
             result.getJobId(),
@@ -252,8 +250,6 @@ public class OrchestrationService {
         @SpanAttribute("job.id") String jobId,
         @SpanAttribute("tile.id") String tileId
     ) {
-        Span.current().setAttribute("service.name", "otelbrot-orchestrator");
-
         activeWorkerCount = Math.max(0, activeWorkerCount - 1);
         Span.current().setAttribute("workers.active", activeWorkerCount);
         logger.debug(
@@ -281,9 +277,6 @@ public class OrchestrationService {
         @SpanAttribute("kubernetes.job.id") String jobId,
         @SpanAttribute("kubernetes.tile.id") String tileId
     ) {
-        Span.current().setAttribute("service.name", "otelbrot-orchestrator");
-        Span.current().setAttribute("kubernetes.namespace", namespace);
-
         try {
             kubernetesClient
                 .batch()
@@ -345,8 +338,6 @@ public class OrchestrationService {
         @SpanAttribute("job.id") String jobId,
         FractalJob job
     ) {
-        Span.current().setAttribute("service.name", "otelbrot-orchestrator");
-
         // Create the preview tile spec
         TileSpec previewSpec = new TileSpec.Builder()
             .jobId(job.getJobId())
@@ -396,8 +387,6 @@ public class OrchestrationService {
         @SpanAttribute("job.id") String jobId,
         FractalJob job
     ) {
-        Span.current().setAttribute("service.name", "otelbrot-orchestrator");
-
         // Partition the rendering area into tiles
         List<TileSpec> tiles = partitionIntoTiles(job);
         Span.current().setAttribute("tiles.count", tiles.size());
@@ -424,8 +413,6 @@ public class OrchestrationService {
         @SpanAttribute("tile.id") String tileId,
         TileSpec tile
     ) {
-        Span.current().setAttribute("service.name", "otelbrot-orchestrator");
-
         createWorkerJob(tile, false);
         Span.current().addEvent("Detail tile job scheduled");
     }
@@ -454,8 +441,6 @@ public class OrchestrationService {
         @SpanAttribute("tile.priority") boolean isPriority,
         TileSpec tileSpec
     ) {
-        Span.current().setAttribute("service.name", "otelbrot-orchestrator");
-
         // Check if we're at maximum worker capacity and this is not a priority job
         int maxWorkers = Math.min(getAvailableCores(), maxConcurrentWorkers);
 
@@ -671,8 +656,6 @@ public class OrchestrationService {
      */
     @WithSpan("OrchestrationService.processJobQueue")
     private synchronized void processJobQueue() {
-        Span.current().setAttribute("service.name", "otelbrot-orchestrator");
-
         // Only process if we have pending jobs and capacity
         int maxWorkers = Math.min(getAvailableCores(), maxConcurrentWorkers);
         Span.current().setAttribute("workers.max", maxWorkers);
@@ -718,8 +701,6 @@ public class OrchestrationService {
         @SpanAttribute("tile.id") String tileId,
         TileSpec tileSpec
     ) {
-        Span.current().setAttribute("service.name", "otelbrot-orchestrator");
-
         createWorkerJob(tileSpec, false);
         Span.current().addEvent("Queued job processed");
     }
@@ -735,8 +716,16 @@ public class OrchestrationService {
      * Calculate how many tiles a job will require
      */
     private int calculateTileCount(FractalJob job) {
-        int tilesX = (int) Math.ceil((double) job.getWidth() / maxTileSize);
-        int tilesY = (int) Math.ceil((double) job.getHeight() / maxTileSize);
+        // Use the job's tile size if specified, otherwise fall back to maxTileSize
+        int tileSize = (job.getTileSize() != null && job.getTileSize() > 0)
+            ? job.getTileSize()
+            : maxTileSize;
+
+        // Validate tile size is within bounds
+        tileSize = Math.min(Math.max(tileSize, 64), 512);
+
+        int tilesX = (int) Math.ceil((double) job.getWidth() / tileSize);
+        int tilesY = (int) Math.ceil((double) job.getHeight() / tileSize);
         return tilesX * tilesY;
     }
 
@@ -751,12 +740,14 @@ public class OrchestrationService {
             // Get the current span to check if it's valid
             Span currentSpan = Span.current();
             if (currentSpan == null || currentSpan.equals(Span.getInvalid())) {
-                logger.warn("No valid span found when getting trace context - creating a new one");
-                
+                logger.warn(
+                    "No valid span found when getting trace context - creating a new one"
+                );
+
                 // When no current span exists, create a default traceparent manually
                 // Format: 00-traceId-spanId-01 (sampled)
                 String traceId = generateRandomHexString(32); // 16 bytes trace ID
-                String spanId = generateRandomHexString(16);  // 8 bytes span ID
+                String spanId = generateRandomHexString(16); // 8 bytes span ID
                 return "00-" + traceId + "-" + spanId + "-01";
             } else {
                 logger.info(
@@ -768,19 +759,28 @@ public class OrchestrationService {
 
             // Use the standard OTel propagator to inject the current context
             Context currentContext = Context.current();
-            propagator.inject(currentContext, carrier, (c, k, v) -> c.put(k, v));
+            propagator.inject(currentContext, carrier, (c, k, v) -> c.put(k, v)
+            );
 
             String traceparent = carrier.getOrDefault("traceparent", "");
             if (traceparent.isEmpty()) {
-                logger.warn("No traceparent found in carrier after injection! Creating a fallback value");
-                
+                logger.warn(
+                    "No traceparent found in carrier after injection! Creating a fallback value"
+                );
+
                 // Fallback - get trace and span ID directly from current span
                 String traceId = currentSpan.getSpanContext().getTraceId();
                 String spanId = currentSpan.getSpanContext().getSpanId();
                 boolean sampled = currentSpan.getSpanContext().isSampled();
-                
+
                 // Create a valid W3C traceparent
-                traceparent = "00-" + traceId + "-" + spanId + "-" + (sampled ? "01" : "00");
+                traceparent =
+                    "00-" +
+                    traceId +
+                    "-" +
+                    spanId +
+                    "-" +
+                    (sampled ? "01" : "00");
                 logger.info("Created fallback traceparent: {}", traceparent);
             } else {
                 logger.info(
@@ -799,7 +799,7 @@ public class OrchestrationService {
             return "";
         }
     }
-    
+
     /**
      * Generate a random hex string of specified length
      */
@@ -807,7 +807,7 @@ public class OrchestrationService {
         // Generate random bytes
         byte[] randomBytes = new byte[length / 2];
         new java.util.Random().nextBytes(randomBytes);
-        
+
         // Convert to hex
         StringBuilder sb = new StringBuilder();
         for (byte b : randomBytes) {
@@ -920,6 +920,15 @@ public class OrchestrationService {
         String colorScheme = job.getColorScheme();
         String jobId = job.getJobId();
 
+        // Get tile size from job or use default - use same logic as calculateTileCount method
+        Integer requestedTileSize = job.getTileSize();
+        int tileSize = (requestedTileSize != null && requestedTileSize > 0)
+            ? requestedTileSize
+            : maxTileSize;
+
+        // Validate tile size is within bounds
+        tileSize = Math.min(Math.max(tileSize, 64), 512);
+
         // Calculate the boundaries of the view
         double xMin = centerX - zoom;
         double xMax = centerX + zoom;
@@ -927,8 +936,8 @@ public class OrchestrationService {
         double yMax = centerY + zoom;
 
         // Determine how many tiles we need in each dimension
-        int tilesX = (int) Math.ceil((double) width / maxTileSize);
-        int tilesY = (int) Math.ceil((double) height / maxTileSize);
+        int tilesX = (int) Math.ceil((double) width / tileSize);
+        int tilesY = (int) Math.ceil((double) height / tileSize);
 
         // Calculate tile size in original pixel space
         int tileWidth = (int) Math.ceil((double) width / tilesX);

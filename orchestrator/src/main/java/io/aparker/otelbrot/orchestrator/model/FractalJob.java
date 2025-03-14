@@ -16,6 +16,7 @@ public class FractalJob {
     private final int width;
     private final int height;
     private final String colorScheme;
+    private final Integer tileSize;
     private JobStatus status;
     private final ZonedDateTime createdAt;
     private ZonedDateTime updatedAt;
@@ -31,6 +32,7 @@ public class FractalJob {
         this.width = builder.width;
         this.height = builder.height;
         this.colorScheme = builder.colorScheme;
+        this.tileSize = builder.tileSize;
         this.status = builder.status;
         this.createdAt = builder.createdAt;
         this.updatedAt = builder.updatedAt;
@@ -49,6 +51,7 @@ public class FractalJob {
                 .width(request.getWidth())
                 .height(request.getHeight())
                 .colorScheme(request.getColorScheme())
+                .tileSize(request.getTileSize())
                 .status(JobStatus.CREATED)
                 .createdAt(ZonedDateTime.now())
                 .updatedAt(ZonedDateTime.now())
@@ -88,6 +91,10 @@ public class FractalJob {
 
     public String getColorScheme() {
         return colorScheme;
+    }
+    
+    public Integer getTileSize() {
+        return tileSize;
     }
 
     public JobStatus getStatus() {
@@ -167,6 +174,7 @@ public class FractalJob {
         private int width;
         private int height;
         private String colorScheme;
+        private Integer tileSize;
         private JobStatus status = JobStatus.CREATED;
         private ZonedDateTime createdAt = ZonedDateTime.now();
         private ZonedDateTime updatedAt = ZonedDateTime.now();
@@ -210,6 +218,11 @@ public class FractalJob {
 
         public Builder colorScheme(String colorScheme) {
             this.colorScheme = colorScheme;
+            return this;
+        }
+        
+        public Builder tileSize(Integer tileSize) {
+            this.tileSize = tileSize;
             return this;
         }
 

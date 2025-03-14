@@ -1,17 +1,16 @@
 package config
 
 import (
-	"encoding/json"
-	"fmt"
+	"log"
 	"os"
 	"strconv"
 )
 
 // Config holds all configuration for the worker
 type Config struct {
-	Server     ServerConfig     `json:"server"`
-	Fractal    FractalConfig    `json:"fractal"`
-	Telemetry  TelemetryConfig  `json:"telemetry"`
+	Server       ServerConfig     `json:"server"`
+	Fractal      FractalConfig    `json:"fractal"`
+	Telemetry    TelemetryConfig  `json:"telemetry"`
 	Orchestrator OrchestratorConfig `json:"orchestrator"`
 }
 
@@ -29,8 +28,8 @@ type FractalConfig struct {
 
 // TelemetryConfig holds the OpenTelemetry configuration
 type TelemetryConfig struct {
-	ServiceName    string `json:"serviceName"`
-	CollectorURL   string `json:"collectorUrl"`
+	ServiceName        string  `json:"serviceName"`
+	CollectorURL       string  `json:"collectorUrl"`
 	TraceSamplingRatio float64 `json:"traceSamplingRatio"`
 }
 
@@ -39,21 +38,24 @@ type OrchestratorConfig struct {
 	URL string `json:"url"`
 }
 
-// Load loads the configuration from a file and environment variables
-func Load(configFile string) (*Config, error) {
-	// Default configuration
+// Load loads the configuration from environment variables
+func Load() (*Config, error) {
+	logger := log.New(os.Stdout, "[config] ", log.LstdFlags)
+	logger.Println("Loading configuration from environment")
+	
+	// Create configuration populated from environment variables
 	cfg := &Config{
 		Server: ServerConfig{
-			Host: "0.0.0.0",
-			Port: 8081,
+			Host: getEnv("SERVER_HOST", "0.0.0.0"),
+			Port: getEnvAsInt("SERVER_PORT", 8081),
 		},
 		Fractal: FractalConfig{
 			MaxWorkers: getEnvAsInt("MAX_WORKERS", 4),
 			QueueSize:  getEnvAsInt("QUEUE_SIZE", 100),
 		},
 		Telemetry: TelemetryConfig{
-			ServiceName:  getEnv("SERVICE_NAME", "go-worker"),
-			CollectorURL: getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317"),
+			ServiceName:        getEnv("SERVICE_NAME", "go-worker"),
+			CollectorURL:       getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "localhost:4317"),
 			TraceSamplingRatio: getEnvAsFloat("TRACE_SAMPLING_RATIO", 1.0),
 		},
 		Orchestrator: OrchestratorConfig{
@@ -61,30 +63,11 @@ func Load(configFile string) (*Config, error) {
 		},
 	}
 
-	// Load configuration from file if provided
-	if configFile != "" {
-		file, err := os.Open(configFile)
-		if err != nil {
-			return nil, fmt.Errorf("failed to open config file: %w", err)
-		}
-		defer file.Close()
-
-		decoder := json.NewDecoder(file)
-		if err := decoder.Decode(cfg); err != nil {
-			return nil, fmt.Errorf("failed to decode config file: %w", err)
-		}
-	}
-
-	// Override with environment variables
-	if host := os.Getenv("SERVER_HOST"); host != "" {
-		cfg.Server.Host = host
-	}
-	if port := getEnvAsInt("SERVER_PORT", 0); port != 0 {
-		cfg.Server.Port = port
-	}
-	if url := os.Getenv("ORCHESTRATOR_URL"); url != "" {
-		cfg.Orchestrator.URL = url
-	}
+	// Log the loaded configuration
+	logger.Printf("Configuration loaded successfully:")
+	logger.Printf("- Service name: %s", cfg.Telemetry.ServiceName)
+	logger.Printf("- Orchestrator URL: %s", cfg.Orchestrator.URL)
+	logger.Printf("- Max workers: %d", cfg.Fractal.MaxWorkers)
 
 	return cfg, nil
 }

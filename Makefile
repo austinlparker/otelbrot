@@ -1,6 +1,6 @@
 # OTEL-Monte Makefile
 
-.PHONY: test test-frontend test-orchestrator test-go-worker clean build build-go-worker docker-build install-cert-manager create-honeycomb-secret helm-install-namespaces helm-add-repos helm-install-otel-operator helm-install-otel-cluster-collector helm-install-lgtm-distributed clean-conflicting-resources helm-install-otelbrot-app helm-deploy deploy-otel-app-collector helm-cleanup helm-cleanup-all help
+.PHONY: test test-frontend test-orchestrator test-go-worker clean build build-go-worker docker-build install-cert-manager create-honeycomb-secret helm-install-namespaces helm-add-repos helm-install-otel-operator helm-install-otel-gateway-collector helm-install-lgtm-distributed clean-conflicting-resources helm-install-otelbrot-app helm-deploy helm-cleanup helm-cleanup-all help
 
 # Run all tests
 test: test-frontend test-orchestrator test-go-worker
@@ -101,13 +101,13 @@ helm-install-otel-operator: helm-add-repos install-cert-manager
 	kubectl -n opentelemetry-operator-system wait --for=condition=available deployment --all --timeout=300s
 	@echo "OpenTelemetry Operator installed successfully."
 
-# Install OpenTelemetry Cluster Collector with Helm
-helm-install-otel-cluster-collector: helm-add-repos helm-install-namespaces create-honeycomb-secret
-	@echo "Installing OpenTelemetry Cluster Collector..."
-	helm upgrade --install otel-cluster-collector open-telemetry/opentelemetry-collector \
+# Install OpenTelemetry Gateway Collector (DaemonSet) with Helm
+helm-install-otel-gateway-collector: helm-add-repos helm-install-namespaces create-honeycomb-secret
+	@echo "Installing OpenTelemetry Gateway Collector (DaemonSet)..."
+	helm upgrade --install otel-gateway-collector open-telemetry/opentelemetry-collector \
 		--namespace otelbrot \
-		-f helm-charts/otel-cluster-collector-values.yaml
-	@echo "OpenTelemetry Cluster Collector installed successfully."
+		-f helm-charts/otel-gateway-collector-values.yaml
+	@echo "OpenTelemetry Gateway Collector (DaemonSet) installed successfully."
 
 # Install LGTM Distributed with Helm
 helm-install-lgtm-distributed: helm-add-repos helm-install-namespaces
@@ -117,13 +117,6 @@ helm-install-lgtm-distributed: helm-add-repos helm-install-namespaces
 		-f helm-charts/lgtm-distributed-values.yaml
 	@echo "LGTM Distributed installed successfully."
 
-# Deploy OTel App Collector and Instrumentation
-deploy-otel-app-collector: helm-install-namespaces create-honeycomb-secret
-	@echo "Deploying OpenTelemetry App Collector and Instrumentation..."
-	helm upgrade --install otel-app-collector open-telemetry/opentelemetry-collector \
-		--namespace otelbrot \
-		-f helm-charts/otel-app-collector-values.yaml
-	@echo "OpenTelemetry App Collector and Instrumentation deployed successfully."
 
 # Clean up any conflicting resources
 clean-conflicting-resources:
@@ -132,21 +125,20 @@ clean-conflicting-resources:
 	@echo "Conflicting resources cleaned up."
 
 # Install otelbrot application with Helm
-helm-install-otelbrot-app: docker-build helm-install-namespaces clean-conflicting-resources
+helm-install-otelbrot-app: docker-build helm-install-namespaces clean-conflicting-resources helm-install-otel-operator
 	@echo "Installing otelbrot application with Helm..."
 	helm upgrade --install otelbrot-app ./helm-charts/otelbrot-app \
 		--namespace otelbrot
 	@echo "Otelbrot application installed successfully."
 
 # Deploy everything with Helm
-helm-deploy: docker-build helm-install-namespaces helm-install-otel-operator helm-install-lgtm-distributed helm-install-otel-cluster-collector helm-install-otelbrot-app deploy-otel-app-collector
+helm-deploy: docker-build helm-install-namespaces helm-install-otel-operator helm-install-lgtm-distributed helm-install-otel-gateway-collector helm-install-otelbrot-app
 	@echo "Deployment complete. Use 'kubectl get pods -n otelbrot' to check status."
 
 # Clean up Helm releases
 helm-cleanup:
 	@echo "Cleaning up Helm releases..."
-	-helm uninstall otel-cluster-collector --namespace otelbrot
-	-helm uninstall otel-app-collector --namespace otelbrot
+	-helm uninstall otel-gateway-collector --namespace otelbrot
 	-helm uninstall lgtm --namespace monitoring
 	-helm uninstall otelbrot-app --namespace otelbrot
 	-kubectl delete jobs --all -n otelbrot --ignore-not-found
@@ -187,9 +179,9 @@ help:
 	@echo "  helm-install-namespaces         Create namespaces using Helm"
 	@echo "  helm-add-repos                  Add Helm repositories"
 	@echo "  helm-install-otel-operator      Install OpenTelemetry Operator using Helm"
-	@echo "  helm-install-otel-cluster-collector Install cluster collector using Helm"
+	@echo "  helm-install-otel-gateway-collector Install gateway collector (DaemonSet) using Helm"
 	@echo "  helm-install-lgtm-distributed   Install LGTM Distributed using Helm"
 	@echo "  helm-install-otelbrot-app       Install otelbrot app using Helm"
-	@echo "  deploy-otel-app-collector       Deploy app collector and instrumentation"
+	@echo ""
 	@echo "  clean-conflicting-resources     Clean up resources that conflict with Helm"
 	@echo "  help                            Show this help message"
