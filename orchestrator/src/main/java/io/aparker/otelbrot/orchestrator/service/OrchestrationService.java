@@ -17,6 +17,7 @@ import io.opentelemetry.context.Context;
 import io.opentelemetry.context.propagation.TextMapPropagator;
 import io.opentelemetry.instrumentation.annotations.SpanAttribute;
 import io.opentelemetry.instrumentation.annotations.WithSpan;
+import java.time.Duration;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -25,9 +26,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.connection.stream.Consumer;
+import org.springframework.data.redis.connection.stream.MapRecord;
+import org.springframework.data.domain.Range;
+import org.springframework.data.redis.connection.stream.ReadOffset;
+import org.springframework.data.redis.connection.stream.Record;
+import org.springframework.data.redis.connection.stream.StreamOffset;
+import org.springframework.data.redis.connection.stream.StreamReadOptions;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 /**
@@ -45,9 +56,15 @@ public class OrchestrationService {
     private final TileRepository tileRepository;
     private final WebSocketService webSocketService;
     private final TextMapPropagator propagator;
+    private final StringRedisTemplate redisTemplate;
 
     @Value("${kubernetes.namespace:otelbrot}")
     private String namespace;
+
+    // Redis Stream configuration - use hardcoded defaults since environment variables aren't set
+    private final String streamName = "otelbrot-jobs";
+    private final String consumerGroup = "worker-group";
+    private final String consumerName = "orchestrator";
 
     // Configurable values
     @Value("${app.worker.image:otel-monte/worker:latest}")
@@ -81,13 +98,58 @@ public class OrchestrationService {
         TileRepository tileRepository,
         WebSocketService webSocketService,
         Tracer tracer,
-        TextMapPropagator propagator
+        TextMapPropagator propagator,
+        StringRedisTemplate redisTemplate
     ) {
         this.kubernetesClient = kubernetesClient;
         this.jobRepository = jobRepository;
         this.tileRepository = tileRepository;
         this.webSocketService = webSocketService;
         this.propagator = propagator;
+        this.redisTemplate = redisTemplate;
+        
+        // Initialize Redis Stream consumer group if it doesn't exist
+        initializeRedisStreamConsumerGroup();
+    }
+    
+    /**
+     * Initialize Redis Stream and Consumer Group with a simpler approach
+     */
+    private void initializeRedisStreamConsumerGroup() {
+        logger.info("Initializing Redis Stream: {} and Consumer Group: {}", streamName, consumerGroup);
+        
+        try {
+            // Create a simple initialization message
+            Map<String, String> initMessage = new HashMap<>();
+            initMessage.put("init", "true");
+            initMessage.put("timestamp", String.valueOf(System.currentTimeMillis()));
+            
+            // Add the message to Redis - this will create the stream if it doesn't exist
+            try {
+                redisTemplate.opsForStream().add(streamName, initMessage);
+                logger.info("Successfully initialized Redis Stream: {}", streamName);
+            } catch (Exception e) {
+                logger.error("Failed to create Redis Stream: {}", e.getMessage(), e);
+                return; // Cannot proceed without a stream
+            }
+            
+            // Now create the consumer group using the high-level API
+            try {
+                // Using the StreamOperations API instead of low-level commands
+                redisTemplate.opsForStream().createGroup(streamName, consumerGroup);
+                logger.info("Successfully created Redis Stream consumer group: {}", consumerGroup);
+            } catch (Exception e) {
+                // Check if it's because the group already exists
+                if (e.getMessage() != null && e.getMessage().contains("BUSYGROUP")) {
+                    logger.info("Consumer group '{}' already exists for stream '{}'", 
+                        consumerGroup, streamName);
+                } else {
+                    logger.error("Failed to create consumer group: {}", e.getMessage(), e);
+                }
+            }
+        } catch (Exception e) {
+            logger.error("Unexpected error during Redis Stream initialization: {}", e.getMessage(), e);
+        }
     }
 
     /**
@@ -441,6 +503,22 @@ public class OrchestrationService {
         @SpanAttribute("tile.priority") boolean isPriority,
         TileSpec tileSpec
     ) {
+        // Use default method without explicit trace context
+        createWorkerJob(jobId, tileId, isPriority, tileSpec, null, null);
+    }
+    
+    /**
+     * Create a Kubernetes job for a worker with explicit trace context
+     */
+    @WithSpan("OrchestrationService.createWorkerJobWithContext")
+    private synchronized void createWorkerJob(
+        @SpanAttribute("job.id") String jobId,
+        @SpanAttribute("tile.id") String tileId,
+        @SpanAttribute("tile.priority") boolean isPriority,
+        TileSpec tileSpec,
+        @SpanAttribute("traceparent") String traceparent,
+        @SpanAttribute("tracestate") String tracestate
+    ) {
         // Check if we're at maximum worker capacity and this is not a priority job
         int maxWorkers = Math.min(getAvailableCores(), maxConcurrentWorkers);
 
@@ -560,11 +638,11 @@ public class OrchestrationService {
             // Add OpenTelemetry trace context using W3C standard environment variables
             .addNewEnv()
             .withName("TRACEPARENT")
-            .withValue(getTraceparent())
+            .withValue(traceparent != null ? traceparent : getTraceparent())
             .endEnv()
             .addNewEnv()
             .withName("TRACESTATE")
-            .withValue(getCurrentTraceState())
+            .withValue(tracestate != null ? tracestate : getCurrentTraceState())
             .endEnv()
             // Mount the OpenTelemetry config
             .addNewVolumeMount()
@@ -615,11 +693,13 @@ public class OrchestrationService {
         // Increment active worker count
         activeWorkerCount++;
 
+        String traceContextSource = traceparent != null ? "preserved" : "current";
         logger.info(
-            "Created worker job: {} for tile: {} (active workers: {})",
+            "Created worker job: {} for tile: {} (active workers: {}, trace context: {})",
             name,
             tileId,
-            activeWorkerCount
+            activeWorkerCount,
+            traceContextSource
         );
     }
 
@@ -634,82 +714,232 @@ public class OrchestrationService {
             tileSpec
         );
     }
-
-    // Queue for pending jobs waiting for resources
-    private final List<TileSpec> pendingJobs = new ArrayList<>();
-
+    
     /**
-     * Add a job to the queue for later execution
+     * Create a Kubernetes job for a worker with trace context - convenience method
      */
-    private void addToJobQueue(TileSpec tileSpec) {
-        pendingJobs.add(tileSpec);
-        logger.debug(
-            "Added tile {} to pending queue. Queue size: {}",
+    private void createWorkerJob(TileSpec tileSpec, boolean isPriority, String traceparent, String tracestate) {
+        createWorkerJob(
+            tileSpec.getJobId(),
             tileSpec.getTileId(),
-            pendingJobs.size()
+            isPriority,
+            tileSpec,
+            traceparent,
+            tracestate
         );
     }
 
     /**
-     * Process queued jobs when resources become available
-     * Called when a worker completes
+     * Add a job to the Redis Stream queue for later execution
+     */
+    @WithSpan("OrchestrationService.addToJobQueue")
+    private void addToJobQueue(TileSpec tileSpec) {
+        // Capture current trace context for the job
+        String traceparent = getTraceparent();
+        String tracestate = getCurrentTraceState();
+        
+        // Create a map of the job data including the TileSpec fields and trace context
+        Map<String, String> jobData = new HashMap<>();
+        jobData.put("jobId", tileSpec.getJobId());
+        jobData.put("tileId", tileSpec.getTileId());
+        jobData.put("xMin", String.valueOf(tileSpec.getXMin()));
+        jobData.put("yMin", String.valueOf(tileSpec.getYMin()));
+        jobData.put("xMax", String.valueOf(tileSpec.getXMax()));
+        jobData.put("yMax", String.valueOf(tileSpec.getYMax()));
+        jobData.put("width", String.valueOf(tileSpec.getWidth()));
+        jobData.put("height", String.valueOf(tileSpec.getHeight()));
+        jobData.put("maxIterations", String.valueOf(tileSpec.getMaxIterations()));
+        jobData.put("colorScheme", tileSpec.getColorScheme());
+        jobData.put("pixelStartX", String.valueOf(tileSpec.getPixelStartX()));
+        jobData.put("pixelStartY", String.valueOf(tileSpec.getPixelStartY()));
+        
+        // Add trace context
+        jobData.put("traceparent", traceparent);
+        jobData.put("tracestate", tracestate != null ? tracestate : "");
+        
+        // Add to Redis Stream
+        redisTemplate.opsForStream().add(streamName, jobData);
+        
+        // Add span attributes for debugging
+        Span.current().setAttribute("queue.stream", streamName);
+        Span.current().setAttribute("job.id", tileSpec.getJobId());
+        Span.current().setAttribute("tile.id", tileSpec.getTileId());
+        Span.current().setAttribute("traceparent", traceparent);
+        
+        logger.debug(
+            "Added tile {} to Redis Stream with trace context",
+            tileSpec.getTileId()
+        );
+    }
+
+    /**
+     * Process queued jobs from Redis Stream when resources become available
+     * Called when a worker completes or on a schedule
      */
     @WithSpan("OrchestrationService.processJobQueue")
+    @Scheduled(fixedDelay = 1000) // Check for jobs every second
     private synchronized void processJobQueue() {
-        // Only process if we have pending jobs and capacity
+        // Only process if we have capacity
         int maxWorkers = Math.min(getAvailableCores(), maxConcurrentWorkers);
-        Span.current().setAttribute("workers.max", maxWorkers);
-        Span.current().setAttribute("workers.active", activeWorkerCount);
-        Span.current().setAttribute("queue.size", pendingJobs.size());
-
+        int availableSlots = maxWorkers - activeWorkerCount;
+        
+        Span span = Span.current();
+        span.setAttribute("workers.max", maxWorkers);
+        span.setAttribute("workers.active", activeWorkerCount);
+        
         // Check if we have capacity to process more jobs
-        if (!pendingJobs.isEmpty() && activeWorkerCount < maxWorkers) {
-            int availableSlots = maxWorkers - activeWorkerCount;
-            int jobsToProcess = Math.min(availableSlots, pendingJobs.size());
-            Span.current()
-                .setAttribute("queue.slots_available", availableSlots);
-            Span.current().setAttribute("queue.jobs_to_process", jobsToProcess);
-
+        if (availableSlots <= 0) {
+            span.addEvent("No available capacity for processing");
+            return;
+        }
+        
+        // Generate a unique consumer name to avoid conflicts in a cluster
+        String instanceConsumerName = consumerName + "-" + UUID.randomUUID().toString().substring(0, 8);
+        
+        try {
+            // First verify that the stream and consumer group exist
+            boolean ready = verifyStreamAndGroup();
+            if (!ready) {
+                logger.warn("Stream or consumer group not ready, skipping job processing");
+                return;
+            }
+            
+            // Read jobs from the stream with XREADGROUP
+            // Use special ID ">" to read only new messages never delivered to any consumer
+            List<MapRecord<String, Object, Object>> records;
+            try {
+                records = redisTemplate.opsForStream()
+                    .read(Consumer.from(consumerGroup, instanceConsumerName),
+                          StreamReadOptions.empty().count(availableSlots).block(Duration.ZERO), // Non-blocking read
+                          StreamOffset.create(streamName, ReadOffset.from(">")));
+            } catch (Exception e) {
+                // Specific handling for stream/group not found errors
+                if (e.getMessage() != null && 
+                    (e.getMessage().contains("NOGROUP") || e.getMessage().contains("No such key"))) {
+                    logger.warn("Stream or group not found during read, reinitializing: {}", e.getMessage());
+                    initializeRedisStreamConsumerGroup();
+                    return;
+                }
+                throw e; // Re-throw other exceptions
+            }
+            
+            if (records == null || records.isEmpty()) {
+                span.addEvent("No pending jobs to process");
+                return;
+            }
+            
+            span.setAttribute("queue.jobs_to_process", records.size());
+            
             logger.info(
-                "Processing {} jobs from queue (queue size: {}, available slots: {})",
-                jobsToProcess,
-                pendingJobs.size(),
+                "Processing {} jobs from Redis Stream (available slots: {})",
+                records.size(),
                 availableSlots
             );
-
-            for (int i = 0; i < jobsToProcess; i++) {
-                TileSpec nextJob = pendingJobs.remove(0);
-                processQueuedJob(nextJob);
+            
+            for (MapRecord<String, Object, Object> record : records) {
+                Map<Object, Object> jobData = record.getValue();
+                
+                // Skip initialization messages
+                if (jobData.containsKey("init") && "true".equals(jobData.get("init").toString())) {
+                    // Acknowledge initialization message
+                    redisTemplate.opsForStream().acknowledge(streamName, consumerGroup, record.getId());
+                    continue;
+                }
+                
+                try {
+                    // Convert the Object map to String map for easier handling
+                    Map<String, String> stringJobData = jobData.entrySet().stream()
+                        .collect(Collectors.toMap(
+                            e -> e.getKey().toString(),
+                            e -> e.getValue() != null ? e.getValue().toString() : ""
+                        ));
+                    
+                    // Extract the tile spec and trace context
+                    TileSpec tileSpec = buildTileSpecFromMap(stringJobData);
+                    String traceparent = stringJobData.get("traceparent");
+                    String tracestate = stringJobData.get("tracestate");
+                    
+                    // Process the job with the preserved trace context
+                    processQueuedJobWithContext(tileSpec, traceparent, tracestate);
+                    
+                    // Acknowledge the message (XACK)
+                    redisTemplate.opsForStream().acknowledge(streamName, consumerGroup, record.getId());
+                    
+                    logger.debug("Processed and acknowledged job from stream: {}", record.getId());
+                } catch (Exception e) {
+                    logger.error("Error processing individual job from stream: {}", e.getMessage(), e);
+                    // Still acknowledge the message to avoid reprocessing a bad message
+                    try {
+                        redisTemplate.opsForStream().acknowledge(streamName, consumerGroup, record.getId());
+                    } catch (Exception ackEx) {
+                        logger.warn("Failed to acknowledge failed job: {}", ackEx.getMessage());
+                    }
+                }
             }
-
-            Span.current().addEvent("Queue processing completed");
-        } else {
-            if (pendingJobs.isEmpty()) {
-                Span.current().addEvent("No pending jobs to process");
-            } else {
-                Span.current().addEvent("No available capacity for processing");
-            }
+            
+            span.addEvent("Queue processing completed");
+            
+        } catch (Exception e) {
+            logger.error("Error processing Redis Stream queue: {}", e.getMessage(), e);
+            span.recordException(e);
+            span.setStatus(StatusCode.ERROR, e.getMessage());
         }
     }
-
+    
     /**
-     * Process a single queued job
+     * Verify that the Redis Stream and Consumer Group exist
      */
-    @WithSpan("OrchestrationService.processQueuedJob")
-    private void processQueuedJob(
-        @SpanAttribute("job.id") String jobId,
-        @SpanAttribute("tile.id") String tileId,
-        TileSpec tileSpec
-    ) {
-        createWorkerJob(tileSpec, false);
-        Span.current().addEvent("Queued job processed");
+    private boolean verifyStreamAndGroup() {
+        try {
+            // Simplified approach: Just initialize directly
+            // This is more robust in Kubernetes environments where Redis might be restarted
+            initializeRedisStreamConsumerGroup();
+            return true;
+        } catch (Exception e) {
+            logger.warn("Error during stream/group verification: {}", e.getMessage(), e);
+            return false;
+        }
+    }
+    
+    /**
+     * Build a TileSpec from Redis Stream job data map
+     */
+    private TileSpec buildTileSpecFromMap(Map<String, String> jobData) {
+        return new TileSpec.Builder()
+            .jobId(jobData.get("jobId"))
+            .tileId(jobData.get("tileId"))
+            .xMin(Double.parseDouble(jobData.get("xMin")))
+            .yMin(Double.parseDouble(jobData.get("yMin")))
+            .xMax(Double.parseDouble(jobData.get("xMax")))
+            .yMax(Double.parseDouble(jobData.get("yMax")))
+            .width(Integer.parseInt(jobData.get("width")))
+            .height(Integer.parseInt(jobData.get("height")))
+            .maxIterations(Integer.parseInt(jobData.get("maxIterations")))
+            .colorScheme(jobData.get("colorScheme"))
+            .pixelStartX(Integer.parseInt(jobData.get("pixelStartX")))
+            .pixelStartY(Integer.parseInt(jobData.get("pixelStartY")))
+            .build();
     }
 
     /**
-     * Process a single queued job - convenience method
+     * Process a queued job with its saved trace context
      */
-    private void processQueuedJob(TileSpec tileSpec) {
-        processQueuedJob(tileSpec.getJobId(), tileSpec.getTileId(), tileSpec);
+    @WithSpan("OrchestrationService.processQueuedJobWithContext")
+    private void processQueuedJobWithContext(
+        TileSpec tileSpec,
+        @SpanAttribute("traceparent") String traceparent,
+        @SpanAttribute("tracestate") String tracestate
+    ) {
+        // Create the Kubernetes job with the preserved trace context
+        createWorkerJob(
+            tileSpec.getJobId(),
+            tileSpec.getTileId(),
+            false,
+            tileSpec,
+            traceparent,
+            tracestate
+        );
+        Span.current().addEvent("Queued job processed with preserved context");
     }
 
     /**
