@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log"
 	"os"
@@ -40,10 +41,14 @@ func main() {
 	}
 
 	// Initialize telemetry system
-	tel, ctx, err := telemetry.Setup(cfg)
+	tel, err := telemetry.Setup(cfg)
 	if err != nil {
 		logger.Fatalf("Failed to initialize telemetry: %v", err)
 	}
+
+	// Extract parent context from environment variables
+	ctx := telemetry.ExtractParentContext(context.Background())
+	logger.Println("Parent context extracted from environment")
 
 	// Create a context that will be canceled on SIGINT or SIGTERM
 	ctx, cancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)

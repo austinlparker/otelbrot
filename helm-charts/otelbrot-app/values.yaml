@@ -51,6 +51,18 @@ orchestrator:
       value: "otelbrot-orchestrator"
     - name: OTEL_EXPERIMENTAL_CONFIG_FILE
       value: "/etc/otel/otel-agent-config.yaml"
+    # Set logging levels to reduce noise
+    - name: LOGGING_LEVEL_ROOT
+      value: "INFO"
+    - name: LOGGING_LEVEL_IO_APARKER_OTELBROT_ORCHESTRATOR_SERVICE_ORCHESTRATIONSERVICE
+      value: "WARN"
+    - name: LOGGING_LEVEL_IO_APARKER_OTELBROT_ORCHESTRATOR_CONTROLLER
+      value: "INFO"
+    - name: LOGGING_LEVEL_IO_APARKER_OTELBROT_ORCHESTRATOR_WEBSOCKET
+      value: "INFO"
+    # Redis configuration  
+    - name: APP_REDIS_STREAM_READ_TIMEOUT
+      value: "5"
 
 frontend:
   image:

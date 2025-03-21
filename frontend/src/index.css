@@ -1,43 +1,44 @@
-/* Light mode theme (default) */
+/* Light mode theme (default) - 90s/2000s style */
 :root {
-  /* Brand colors - OpenTelemetry palette */
+  /* Brand colors - OpenTelemetry palette with retro flair */
   --primary-color: #F5A800; /* OpenTelemetry yellow */
   --secondary-color: #425CC7; /* OpenTelemetry blue */
   --tertiary-color: #3D3D3D; /* OpenTelemetry dark */
   
-  /* UI colors - light theme */
-  --text-color: #2D2D2D;
-  --text-secondary: #6c6c6c;
-  --background-color: #f8f9fa;
-  --card-background: #ffffff;
-  --card-border: rgba(0, 0, 0, 0.12);
-  --panel-background: #ffffff;
-  --canvas-border: rgba(0, 0, 0, 0.08);
-  --divider-color: rgba(0, 0, 0, 0.12);
+  /* UI colors - retro light theme */
+  --text-color: #000000;
+  --text-secondary: #555555;
+  --background-color: #F0F0F0;
+  --card-background: #E4E4E4;
+  --card-border: #999999;
+  --panel-background: #DDDDDD;
+  --canvas-border: #999999;
+  --divider-color: #BBBBBB;
+  --sidebar-background: #CCCCCC;
   
   /* Status/feedback colors */
-  --success-color: #38a169;
-  --info-color: #3182ce;
-  --warning-color: #dd6b20;
-  --error-color: #e53e3e;
+  --success-color: #008800;
+  --info-color: #0066CC;
+  --warning-color: #FF9900;
+  --error-color: #CC0000;
   
-  /* UI elements */
-  --input-background: #ffffff;
-  --input-border: #e2e8f0;
-  --input-focus-border: var(--secondary-color);
-  --button-text: #2D2D2D;
+  /* UI elements - 90s/2000s style */
+  --input-background: #FFFFFF;
+  --input-border: #999999;
+  --input-focus-border: #0066CC;
+  --button-text: #000000;
   --button-hover: #F7B519;
   --button-active: #E09900;
-  --button-disabled-bg: #e2e8f0;
-  --button-disabled-text: #a0aec0;
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
-  --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+  --button-disabled-bg: #CCCCCC;
+  --button-disabled-text: #777777;
+  --shadow-sm: 2px 2px 0px #999999;
+  --shadow: 3px 3px 0px #777777;
+  --shadow-lg: 4px 4px 0px #555555;
   
-  /* Layout */
-  --border-radius-sm: 4px;
-  --border-radius: 8px;
-  --border-radius-lg: 12px;
+  /* Layout - 90s/2000s style with blocky elements */
+  --border-radius-sm: 0px;
+  --border-radius: 0px;
+  --border-radius-lg: 0px;
   --spacing-xs: 4px;
   --spacing-sm: 8px;
   --spacing-md: 16px;
@@ -69,9 +70,8 @@
   /* System settings */
   color-scheme: light;
   
-  /* Typography base */
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
-    Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  /* Typography base - 90s/2000s style with classic fonts */
+  font-family: 'Tahoma', 'Verdana', 'Arial', sans-serif;
   line-height: 1.6;
   font-weight: 400;
   font-synthesis: none;
@@ -80,40 +80,41 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Dark mode theme */
+/* Dark mode theme - 90s/2000s style - more Windows 98 dark theme inspired */
 @media (prefers-color-scheme: dark) {
   :root {
-    /* UI colors - dark theme */
-    --text-color: #e2e8f0;
-    --text-secondary: #a0aec0;
-    --background-color: #171923;
-    --card-background: #1A202C;
-    --card-border: rgba(255, 255, 255, 0.12);
-    --panel-background: #2D3748;
-    --canvas-border: rgba(255, 255, 255, 0.08);
-    --divider-color: rgba(255, 255, 255, 0.12);
+    /* UI colors - retro dark theme - more Windows 98 night mode */
+    --text-color: #FFFFFF;
+    --text-secondary: #CCCCCC;
+    --background-color: #000080; /* Classic Windows blue */
+    --card-background: #000066; 
+    --card-border: #0000AA;
+    --panel-background: #000080;
+    --canvas-border: #0000AA;
+    --divider-color: #0000AA;
+    --sidebar-background: #000080;
     
     /* Adjusted brand colors for dark mode */
     --primary-color: #FFBC1F; /* Slightly brighter yellow for dark background */
     --secondary-color: #5A78E0; /* Slightly brighter blue for dark background */
     
     /* Status/feedback colors */
-    --success-color: #48BB78;
-    --info-color: #4299E1;
-    --warning-color: #ED8936;
-    --error-color: #F56565;
+    --success-color: #00FF00;
+    --info-color: #00CCFF;
+    --warning-color: #FFCC00;
+    --error-color: #FF0000;
     
     /* UI elements */
-    --input-background: #2D3748;
-    --input-border: #4A5568;
-    --button-text: #1A202C;
-    --button-hover: #FFD066;
-    --button-active: #F5A800;
-    --button-disabled-bg: #4A5568;
-    --button-disabled-text: #718096;
-    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
-    --shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-    --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.3);
+    --input-background: #000033;
+    --input-border: #0000AA;
+    --button-text: #FFFFFF;
+    --button-hover: #0000AA;
+    --button-active: #000033;
+    --button-disabled-bg: #333366;
+    --button-disabled-text: #666699;
+    --shadow-sm: 2px 2px 0px #000033;
+    --shadow: 3px 3px 0px #000033;
+    --shadow-lg: 4px 4px 0px #000033;
     
     /* Chart colors - slightly adjusted for dark bg */
     --chart-color-1: #FFD066;
@@ -128,39 +129,40 @@
   }
 }
 
-/* Manual dark mode class for theme toggle functionality */
+/* Manual dark mode class for theme toggle functionality - 90s/2000s style - Windows 98 dark theme */
 .dark-mode {
-  /* UI colors - dark theme */
-  --text-color: #e2e8f0;
-  --text-secondary: #a0aec0;
-  --background-color: #171923;
-  --card-background: #1A202C;
-  --card-border: rgba(255, 255, 255, 0.12);
-  --panel-background: #2D3748;
-  --canvas-border: rgba(255, 255, 255, 0.08);
-  --divider-color: rgba(255, 255, 255, 0.12);
+  /* UI colors - retro dark theme - classic Windows blue */
+  --text-color: #FFFFFF;
+  --text-secondary: #CCCCCC;
+  --background-color: #000080; /* Classic Windows blue */
+  --card-background: #000066; 
+  --card-border: #0000AA;
+  --panel-background: #000080;
+  --canvas-border: #0000AA;
+  --divider-color: #0000AA;
+  --sidebar-background: #000080;
   
   /* Adjusted brand colors for dark mode */
   --primary-color: #FFBC1F; /* Slightly brighter yellow for dark background */
   --secondary-color: #5A78E0; /* Slightly brighter blue for dark background */
   
   /* Status/feedback colors */
-  --success-color: #48BB78;
-  --info-color: #4299E1;
-  --warning-color: #ED8936;
-  --error-color: #F56565;
+  --success-color: #00FF00;
+  --info-color: #00CCFF;
+  --warning-color: #FFCC00;
+  --error-color: #FF0000;
   
   /* UI elements */
-  --input-background: #2D3748;
-  --input-border: #4A5568;
-  --button-text: #1A202C;
-  --button-hover: #FFD066;
-  --button-active: #F5A800;
-  --button-disabled-bg: #4A5568;
-  --button-disabled-text: #718096;
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
-  --shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.3);
+  --input-background: #000033;
+  --input-border: #0000AA;
+  --button-text: #FFFFFF;
+  --button-hover: #0000AA;
+  --button-active: #000033;
+  --button-disabled-bg: #333366;
+  --button-disabled-text: #666699;
+  --shadow-sm: 2px 2px 0px #000033;
+  --shadow: 3px 3px 0px #000033;
+  --shadow-lg: 4px 4px 0px #000033;
   
   /* Chart colors - slightly adjusted for dark bg */
   --chart-color-1: #FFD066;
@@ -214,17 +216,10 @@ body {
   min-height: 100vh;
   color: var(--text-color);
   background-color: var(--background-color);
-  background-image: 
-    radial-gradient(at 40% 20%, rgba(var(--primary-color-rgb, 245, 168, 0), 0.03) 0px, transparent 50%),
-    radial-gradient(at 80% 0%, rgba(var(--secondary-color-rgb, 66, 92, 199), 0.03) 0px, transparent 50%),
-    radial-gradient(at 0% 50%, rgba(var(--secondary-color-rgb, 66, 92, 199), 0.03) 0px, transparent 50%),
-    radial-gradient(at 80% 50%, rgba(var(--primary-color-rgb, 245, 168, 0), 0.03) 0px, transparent 50%),
-    radial-gradient(at 0% 100%, rgba(var(--primary-color-rgb, 245, 168, 0), 0.03) 0px, transparent 50%),
-    radial-gradient(at 80% 100%, rgba(var(--secondary-color-rgb, 66, 92, 199), 0.03) 0px, transparent 50%),
-    radial-gradient(at 0% 0%, rgba(var(--secondary-color-rgb, 66, 92, 199), 0.03) 0px, transparent 50%);
-  /* For dark mode, add a subtle noise texture */
-  background-blend-mode: normal, multiply;
-  transition: var(--transition);
+  /* Classic 90s/00s background pattern */
+  background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAEklEQVQImWNgYGD4z0AswK4SAFXuAf8EPy+xAAAAAElFTkSuQmCC");
+  background-repeat: repeat;
+  transition: var(--transition-fast);
 }
 
 /* Apply RGB fallbacks since we're using rgba in the gradient */
@@ -242,10 +237,53 @@ body {
   --primary-color-rgb: 255, 188, 31;
   --secondary-color-rgb: 90, 120, 224;
   --tertiary-color-rgb: 130, 130, 130;
-  --error-color-rgb: 245, 101, 101;
-  --success-color-rgb: 72, 187, 120;
-  --info-color-rgb: 66, 153, 225;
-  --warning-color-rgb: 237, 137, 54;
+  --error-color-rgb: 255, 0, 0;
+  --success-color-rgb: 0, 255, 0;
+  --info-color-rgb: 0, 204, 255;
+  --warning-color-rgb: 255, 204, 0;
+}
+
+/* Dark mode button styles */
+.dark-mode button {
+  background-color: #000066;
+  background-image: linear-gradient(to bottom, #0000AA, #000066);
+  border: 2px outset #0000AA;
+  color: #FFFFFF;
+}
+
+.dark-mode button:hover {
+  background-image: linear-gradient(to bottom, #0000CC, #0000AA);
+}
+
+.dark-mode button:active {
+  border-style: inset;
+  background-image: linear-gradient(to bottom, #000066, #0000AA);
+}
+
+.dark-mode button.secondary {
+  background-color: #AA0000;
+  background-image: linear-gradient(to bottom, #CC0000, #AA0000);
+  border-color: #AA0000;
+  color: #FFFFFF;
+}
+
+.dark-mode button.secondary:hover {
+  background-image: linear-gradient(to bottom, #FF0000, #CC0000);
+}
+
+.dark-mode button.secondary:active {
+  background-image: linear-gradient(to bottom, #AA0000, #CC0000);
+}
+
+.dark-mode button.tertiary {
+  background-color: #444444;
+  background-image: linear-gradient(to bottom, #666666, #444444);
+  border-color: #555555;
+  color: #FFFFFF;
+}
+
+.dark-mode button.tertiary:hover {
+  background-image: linear-gradient(to bottom, #777777, #555555);
 }
 
 /* Heading styles */
@@ -305,18 +343,19 @@ a:hover {
   text-decoration: underline;
 }
 
-/* Modern button styles */
+/* 90s/2000s button styles */
 button {
   border-radius: var(--border-radius);
-  border: none;
-  padding: 0.625rem 1.125rem;
+  border: 2px outset #CCCCCC;
+  padding: 0.425rem 0.875rem;
   font-size: 0.95rem;
   font-weight: var(--font-weight-semibold);
   font-family: inherit;
-  background-color: var(--primary-color);
+  background-color: #DDDDDD;
+  background-image: linear-gradient(to bottom, #EEEEEE, #CCCCCC);
   color: var(--button-text);
   cursor: pointer;
-  transition: var(--transition);
+  transition: var(--transition-fast);
   box-shadow: var(--shadow-sm);
   position: relative;
   overflow: hidden;
@@ -326,63 +365,53 @@ button {
   gap: 0.5rem;
 }
 
-button::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(255, 255, 255, 0);
-  transition: var(--transition-fast);
-}
-
 button:hover {
-  background-color: var(--button-hover);
-  transform: translateY(-2px);
+  background-image: linear-gradient(to bottom, #FFFFFF, #DDDDDD);
   box-shadow: var(--shadow);
 }
 
-button:hover::before {
-  background: rgba(255, 255, 255, 0.1);
-}
-
 button:active {
-  transform: translateY(0);
-  background-color: var(--button-active);
-  box-shadow: var(--shadow-sm);
+  border-style: inset;
+  background-image: linear-gradient(to bottom, #CCCCCC, #DDDDDD);
+  box-shadow: inset 1px 1px 3px rgba(0, 0, 0, 0.2);
 }
 
 button.secondary {
-  background-color: var(--secondary-color);
+  background-color: #4A6CD4;
+  background-image: linear-gradient(to bottom, #6080E0, #4A6CD4);
   color: white;
+  border-color: #395BB8;
 }
 
 button.secondary:hover {
-  background-color: var(--secondary-color);
-  filter: brightness(110%);
+  background-image: linear-gradient(to bottom, #7090F0, #5A7CE4);
+}
+
+button.secondary:active {
+  background-image: linear-gradient(to bottom, #395BB8, #4A6CD4);
 }
 
 button.tertiary {
-  background-color: transparent;
+  background-color: #E0E0E0;
+  background-image: linear-gradient(to bottom, #E8E8E8, #D0D0D0);
   color: var(--text-color);
-  box-shadow: inset 0 0 0 1px var(--card-border);
+  border-color: #BBBBBB;
 }
 
 button.tertiary:hover {
-  box-shadow: inset 0 0 0 1px var(--text-secondary);
-  background-color: rgba(var(--tertiary-color-rgb, 61, 61, 61), 0.05);
+  background-image: linear-gradient(to bottom, #F0F0F0, #E0E0E0);
 }
 
 button:focus,
 button:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(var(--primary-color-rgb), 0.4);
+  outline: 1px dotted #000000;
+  box-shadow: 0 0 0 1px rgba(var(--primary-color-rgb), 0.4);
 }
 
 button.secondary:focus,
 button.secondary:focus-visible {
-  box-shadow: 0 0 0 3px rgba(var(--secondary-color-rgb), 0.4);
+  outline: 1px dotted #FFFFFF;
+  box-shadow: 0 0 0 1px rgba(var(--secondary-color-rgb), 0.4);
 }
 
 button:disabled {

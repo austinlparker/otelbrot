@@ -84,6 +84,9 @@ public class OrchestrationService {
 
     @Value("${app.worker.image-pull-policy:Never}")
     private String imagePullPolicy;
+    
+    @Value("${app.redis.stream-read-timeout:5}")
+    private int redisStreamReadTimeoutSeconds;
 
     // Keep track of active worker count
     private int activeWorkerCount = 0;
@@ -108,17 +111,31 @@ public class OrchestrationService {
         this.propagator = propagator;
         this.redisTemplate = redisTemplate;
         
+        // Clean up Redis Stream first to remove old messages
+        cleanupRedisStream();
+        
         // Initialize Redis Stream consumer group if it doesn't exist
-        initializeRedisStreamConsumerGroup();
+        boolean success = initializeRedisStreamConsumerGroup();
+        if (!success) {
+            logger.warn("Redis Stream initialization failed during service startup - will retry during job processing");
+            redisStreamInitialized = false;
+        } else {
+            logger.info("Redis Stream and Consumer Group successfully initialized during startup");
+            redisStreamInitialized = true;
+        }
     }
     
     /**
      * Initialize Redis Stream and Consumer Group with a simpler approach
+     * @return true if the stream and consumer group are ready, false otherwise
      */
-    private void initializeRedisStreamConsumerGroup() {
+    private boolean initializeRedisStreamConsumerGroup() {
         logger.info("Initializing Redis Stream: {} and Consumer Group: {}", streamName, consumerGroup);
         
         try {
+            // First check if the stream exists
+            Boolean streamExists = redisTemplate.hasKey(streamName);
+            
             // Create a simple initialization message
             Map<String, String> initMessage = new HashMap<>();
             initMessage.put("init", "true");
@@ -127,28 +144,35 @@ public class OrchestrationService {
             // Add the message to Redis - this will create the stream if it doesn't exist
             try {
                 redisTemplate.opsForStream().add(streamName, initMessage);
-                logger.info("Successfully initialized Redis Stream: {}", streamName);
+                if (streamExists == null || !streamExists) {
+                    logger.info("Created new Redis Stream: {}", streamName);
+                } else {
+                    logger.info("Added initialization message to existing Redis Stream: {}", streamName);
+                }
             } catch (Exception e) {
-                logger.error("Failed to create Redis Stream: {}", e.getMessage(), e);
-                return; // Cannot proceed without a stream
+                logger.error("Failed to create/access Redis Stream: {}", e.getMessage(), e);
+                return false; // Cannot proceed without a stream
             }
             
-            // Now create the consumer group using the high-level API
+            // Create the consumer group directly, handling the case where it already exists
             try {
-                // Using the StreamOperations API instead of low-level commands
-                redisTemplate.opsForStream().createGroup(streamName, consumerGroup);
+                redisTemplate.opsForStream().createGroup(streamName, ReadOffset.from("0"), consumerGroup);
                 logger.info("Successfully created Redis Stream consumer group: {}", consumerGroup);
-            } catch (Exception e) {
+                return true;
+            } catch (Exception createEx) {
                 // Check if it's because the group already exists
-                if (e.getMessage() != null && e.getMessage().contains("BUSYGROUP")) {
+                if (createEx.getMessage() != null && createEx.getMessage().contains("BUSYGROUP")) {
                     logger.info("Consumer group '{}' already exists for stream '{}'", 
                         consumerGroup, streamName);
+                    return true;
                 } else {
-                    logger.error("Failed to create consumer group: {}", e.getMessage(), e);
+                    logger.error("Failed to create consumer group: {}", createEx.getMessage(), createEx);
+                    return false;
                 }
             }
         } catch (Exception e) {
             logger.error("Unexpected error during Redis Stream initialization: {}", e.getMessage(), e);
+            return false;
         }
     }
 
@@ -184,6 +208,15 @@ public class OrchestrationService {
         Span.current().setAttribute("job.id", job.getJobId());
         logger.info("Created new fractal job: {}", job.getJobId());
 
+        // Calculate total tiles (1 preview + detail tiles)
+        int detailTileCount = calculateTileCount(job);
+        int totalTiles = 1 + detailTileCount; // Preview tile + detail tiles
+        
+        // Initialize job progress tracking with correct total count
+        jobRepository.updateProgress(job.getJobId(), 0, totalTiles);
+        logger.info("Job {} will have {} total tiles (1 preview + {} detail)", 
+            job.getJobId(), totalTiles, detailTileCount);
+
         // Initialize preview job
         createPreviewJob(job);
 
@@ -205,11 +238,20 @@ public class OrchestrationService {
         @SpanAttribute("tile.id") String tileId,
         TileResult result
     ) {
-        logger.info(
-            "Processing tile result for job: {}, tile: {}",
-            result.getJobId(),
-            result.getTileId()
-        );
+        // Preview tiles are important enough to log at INFO level
+        boolean isPreviewTile = tileId.equals("preview") || tileId.contains("preview");
+        if (isPreviewTile) {
+            logger.info(
+                "Processing PREVIEW tile result for job: {}",
+                result.getJobId()
+            );
+        } else {
+            logger.debug(
+                "Processing tile result for job: {}, tile: {}",
+                result.getJobId(),
+                result.getTileId()
+            );
+        }
 
         // Save the tile result
         tileRepository.saveTileResult(result);
@@ -244,6 +286,7 @@ public class OrchestrationService {
                 Span.current().setAttribute("job.status", "COMPLETED");
                 Span.current()
                     .setAttribute("job.tiles.total", job.getTotalTiles());
+                // Keep this as INFO since job completion is important
                 logger.info(
                     "Job {} is now complete. All {} tiles received.",
                     jobId,
@@ -326,7 +369,17 @@ public class OrchestrationService {
         }
 
         // Process any queued jobs now that we have capacity
-        processJobQueue();
+        // Skip initialization check since we'll do it in processJobQueue directly
+        // This avoids redundant initialization on each completed tile
+        if (redisStreamInitialized) {
+            try {
+                processJobQueue();
+            } catch (Exception e) {
+                // Don't let Redis errors affect tile processing
+                logger.error("Error processing job queue after tile completion: {}", e.getMessage());
+                Span.current().recordException(e);
+            }
+        }
 
         Span.current().addEvent("Worker count decremented and queue processed");
     }
@@ -422,13 +475,9 @@ public class OrchestrationService {
         // Create and launch a worker pod
         createWorkerJob(previewSpec, true);
 
-        // Update job status and count
+        // Update job status to PROCESSING
         jobRepository.updateStatus(job.getJobId(), JobStatus.PROCESSING);
-        jobRepository.updateProgress(
-            job.getJobId(),
-            0,
-            1 + calculateTileCount(job)
-        );
+        // Note: Progress count is already initialized in createRenderJob
 
         logger.info("Created preview job for fractal job: {}", job.getJobId());
         Span.current().addEvent("Preview job created");
@@ -772,12 +821,89 @@ public class OrchestrationService {
         );
     }
 
+    // Static flag to track if Redis Stream is already initialized
+    private static boolean redisStreamInitialized = false;
+    
+    /**
+     * Clean up the Redis Stream by trimming old messages and resetting consumer group state
+     * This prevents the stream from growing indefinitely and ensures a fresh state on application restart
+     */
+    private void cleanupRedisStream() {
+        logger.info("Cleaning up Redis Stream: {} on application startup", streamName);
+        
+        try {
+            // Check if the stream exists
+            Boolean streamExists = redisTemplate.hasKey(streamName);
+            if (streamExists == null || !streamExists) {
+                logger.info("Redis Stream {} doesn't exist yet, no cleanup needed", streamName);
+                return;
+            }
+            
+            try {
+                // Delete any existing consumer groups for a fresh start
+                // We need to use the StreamInfo.XInfoGroups API
+                org.springframework.data.redis.connection.stream.StreamInfo.XInfoGroups groups = 
+                    redisTemplate.opsForStream().groups(streamName);
+                
+                if (groups != null && !groups.isEmpty()) {
+                    logger.info("Found {} existing consumer groups in stream: {}", groups.size(), streamName);
+                    
+                    // Iterate through each group info and destroy the group
+                    for (org.springframework.data.redis.connection.stream.StreamInfo.XInfoGroup groupInfo : groups) {
+                        String groupName = groupInfo.groupName();
+                        try {
+                            redisTemplate.opsForStream().destroyGroup(streamName, groupName);
+                            logger.info("Deleted consumer group: {} from stream: {}", groupName, streamName);
+                        } catch (Exception e) {
+                            logger.warn("Error deleting consumer group {}: {}", groupName, e.getMessage());
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                logger.warn("Error listing/deleting consumer groups: {}", e.getMessage());
+            }
+            
+            // Trim the stream to keep only the most recent initialization message
+            try {
+                // First check how many messages are in the stream
+                Long streamLength = redisTemplate.opsForStream().size(streamName);
+                if (streamLength != null && streamLength > 0) {
+                    logger.info("Redis Stream {} contains {} messages, trimming to keep only 1 message", 
+                                streamName, streamLength);
+                    
+                    // XTRIM with MAXLEN ~ 1 (the ~ means approximate trim, which is more efficient)
+                    redisTemplate.opsForStream().trim(streamName, 1, true);
+                    logger.info("Successfully trimmed Redis Stream to approximately 1 message");
+                } else {
+                    logger.info("Redis Stream {} is empty, no trimming needed", streamName);
+                }
+            } catch (Exception e) {
+                logger.warn("Error trimming stream: {}", e.getMessage());
+            }
+            
+            // Optionally delete the entire stream for a completely fresh start
+            // Uncomment if you want to completely reset between application starts
+            /*
+            try {
+                redisTemplate.delete(streamName);
+                logger.info("Deleted Redis Stream {} for a fresh start", streamName);
+            } catch (Exception e) {
+                logger.warn("Error deleting stream: {}", e.getMessage());
+            }
+            */
+            
+            logger.info("Redis Stream cleanup completed successfully");
+        } catch (Exception e) {
+            logger.error("Error during Redis Stream cleanup: {}", e.getMessage(), e);
+        }
+    }
+    
     /**
      * Process queued jobs from Redis Stream when resources become available
      * Called when a worker completes or on a schedule
      */
     @WithSpan("OrchestrationService.processJobQueue")
-    @Scheduled(fixedDelay = 1000) // Check for jobs every second
+    @Scheduled(fixedDelay = 250) // Check for jobs every 250ms for faster response
     private synchronized void processJobQueue() {
         // Only process if we have capacity
         int maxWorkers = Math.min(getAvailableCores(), maxConcurrentWorkers);
@@ -790,6 +916,8 @@ public class OrchestrationService {
         // Check if we have capacity to process more jobs
         if (availableSlots <= 0) {
             span.addEvent("No available capacity for processing");
+            // Log at debug level to reduce noise
+            logger.debug("No available capacity for processing jobs. Active workers: {}", activeWorkerCount);
             return;
         }
         
@@ -797,39 +925,99 @@ public class OrchestrationService {
         String instanceConsumerName = consumerName + "-" + UUID.randomUUID().toString().substring(0, 8);
         
         try {
-            // First verify that the stream and consumer group exist
-            boolean ready = verifyStreamAndGroup();
-            if (!ready) {
-                logger.warn("Stream or consumer group not ready, skipping job processing");
-                return;
+            // Only verify stream and group if not already initialized
+            if (!redisStreamInitialized) {
+                boolean ready = verifyStreamAndGroup();
+                if (!ready) {
+                    logger.warn("Stream or consumer group not ready, skipping job processing");
+                    return;
+                }
+                redisStreamInitialized = true;
+                logger.info("Redis Stream and Consumer Group successfully initialized");
             }
             
             // Read jobs from the stream with XREADGROUP
             // Use special ID ">" to read only new messages never delivered to any consumer
             List<MapRecord<String, Object, Object>> records;
             try {
+                // Use configurable timeout to avoid blocking for too long
+                StreamReadOptions options = StreamReadOptions.empty()
+                    .count(availableSlots)
+                    .block(Duration.ofSeconds(redisStreamReadTimeoutSeconds)); // Configurable timeout instead of default 60 seconds
+                
                 records = redisTemplate.opsForStream()
                     .read(Consumer.from(consumerGroup, instanceConsumerName),
-                          StreamReadOptions.empty().count(availableSlots).block(Duration.ZERO), // Non-blocking read
+                          options,
                           StreamOffset.create(streamName, ReadOffset.from(">")));
             } catch (Exception e) {
                 // Specific handling for stream/group not found errors
                 if (e.getMessage() != null && 
                     (e.getMessage().contains("NOGROUP") || e.getMessage().contains("No such key"))) {
                     logger.warn("Stream or group not found during read, reinitializing: {}", e.getMessage());
-                    initializeRedisStreamConsumerGroup();
+                    redisStreamInitialized = false; // Reset flag to force reinitialization
+                    
+                    // Directly initialize here instead of just marking for next cycle
+                    boolean success = initializeRedisStreamConsumerGroup();
+                    if (success) {
+                        logger.info("Successfully reinitialized Redis Stream and Consumer Group after error");
+                        redisStreamInitialized = true;
+                        
+                        // Try again immediately instead of waiting for next cycle
+                        try {
+                            // Use configurable timeout to avoid blocking for too long
+                            StreamReadOptions options = StreamReadOptions.empty()
+                                .count(availableSlots)
+                                .block(Duration.ofSeconds(redisStreamReadTimeoutSeconds)); // Configurable timeout instead of default 60 seconds
+                            
+                            records = redisTemplate.opsForStream()
+                                .read(Consumer.from(consumerGroup, instanceConsumerName),
+                                    options,
+                                    StreamOffset.create(streamName, ReadOffset.from(">")));
+                            
+                            // If we get here, then the read succeeded
+                            logger.info("Successfully read from Redis Stream after reinitialization");
+                            
+                            // Skip the empty records check below if we have records
+                            if (records != null && !records.isEmpty()) {
+                                // Continue processing with these records
+                                span.setAttribute("queue.jobs_to_process", records.size());
+                                logger.info(
+                                    "Processing {} jobs from Redis Stream after reinitialization (available slots: {})",
+                                    records.size(),
+                                    availableSlots
+                                );
+                                
+                                // Continue with normal processing
+                                // The code below will be executed because we're not returning
+                            } else {
+                                logger.info("No pending jobs to process after reinitialization");
+                                return;
+                            }
+                        } catch (Exception readEx) {
+                            logger.warn("Error reading from Redis Stream after reinitialization: {}", readEx.getMessage());
+                            return;
+                        }
+                    } else {
+                        logger.warn("Failed to reinitialize Redis Stream and Consumer Group, will retry next cycle");
+                        return;
+                    }
+                } else {
+                    // For other exceptions, log and return
+                    logger.error("Error reading from Redis Stream: {}", e.getMessage(), e);
                     return;
                 }
-                throw e; // Re-throw other exceptions
             }
             
             if (records == null || records.isEmpty()) {
                 span.addEvent("No pending jobs to process");
+                // Only log at debug level to reduce noise
+                logger.debug("No pending jobs to process in Redis Stream (available slots: {})", availableSlots);
                 return;
             }
             
             span.setAttribute("queue.jobs_to_process", records.size());
             
+            // Log at info level only when we actually have jobs to process
             logger.info(
                 "Processing {} jobs from Redis Stream (available slots: {})",
                 records.size(),
@@ -891,10 +1079,8 @@ public class OrchestrationService {
      */
     private boolean verifyStreamAndGroup() {
         try {
-            // Simplified approach: Just initialize directly
-            // This is more robust in Kubernetes environments where Redis might be restarted
-            initializeRedisStreamConsumerGroup();
-            return true;
+            // Call the initialization method which now returns a boolean success indicator
+            return initializeRedisStreamConsumerGroup();
         } catch (Exception e) {
             logger.warn("Error during stream/group verification: {}", e.getMessage(), e);
             return false;

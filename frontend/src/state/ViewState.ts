@@ -24,15 +24,25 @@ export class ViewState {
   }
 
   /**
-   * Reset to the default view
+   * Reset to the default view, but preserve user's quality settings
    */
   reset(): void {
+    // Store current quality settings
+    const currentMaxIterations = this.maxIterations;
+    const currentColorScheme = this.colorScheme;
+    const currentTileSize = this.tileSize;
+    
+    // Reset view position
     this.centerX = -0.5
     this.centerY = 0
     this.zoom = 2.0
-    this.colorScheme = 'classic'
-    this.maxIterations = 100
-    this.tileSize = 256
+    
+    // Preserve user's quality settings
+    this.colorScheme = currentColorScheme;
+    this.maxIterations = currentMaxIterations;
+    this.tileSize = currentTileSize;
+    
+    // Clear the cache
     this.clearCache()
   }
 

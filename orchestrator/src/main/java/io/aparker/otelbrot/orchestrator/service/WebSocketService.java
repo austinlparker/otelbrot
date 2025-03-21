@@ -213,12 +213,13 @@ public class WebSocketService {
             
             // Check if job is complete and log it
             if (job.getStatus() == JobStatus.COMPLETED) {
-                logger.info("Job {} is now complete. Progress: {}%, Completed tiles: {}, Total tiles: {}", 
-                    jobId, String.format("%.2f", job.getProgress()), job.getCompletedTiles(), job.getTotalTiles());
+                logger.info("Job {} is now complete. Tiles: {}/{} (Completed/Total)", 
+                    jobId, job.getCompletedTiles(), job.getTotalTiles());
                 Span.current().addEvent("Job completed");
             } else {
-                logger.debug("Sent progress update for job: {}, progress: {}%", 
-                    jobId, String.format("%.2f", job.getProgress()));
+                double actualProgress = Math.min(100.0, (double) job.getCompletedTiles() / Math.max(1, job.getTotalTiles()) * 100.0);
+                logger.debug("Sent progress update for job: {}, progress: {}%, Tiles: {}/{}", 
+                    jobId, String.format("%.2f", actualProgress), job.getCompletedTiles(), job.getTotalTiles());
                 Span.current().addEvent("Progress update sent");
             }
         } catch (Exception e) {

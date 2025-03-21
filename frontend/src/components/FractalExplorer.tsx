@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { FractalCanvas } from './FractalCanvas'
 import { ControlPanel } from './ControlPanel'
 import { TileManager } from './TileManager'
@@ -175,7 +175,7 @@ export function FractalExplorer() {
   const canvasUpdatePendingRef = useRef(false);
   
   // Debounced canvas redraw function to reduce excessive redraws
-  const debouncedCanvasRedraw = (immediate: boolean = false) => {
+  const debouncedCanvasRedraw = useCallback((immediate: boolean = false) => {
     if (drawDebounceTimeoutRef.current !== null) {
       window.clearTimeout(drawDebounceTimeoutRef.current);
       drawDebounceTimeoutRef.current = null;
@@ -188,6 +188,12 @@ export function FractalExplorer() {
       
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
+      
+      // Make sure the preview canvas is also ready
+      if (immediate && document.querySelector('.preview-canvas')) {
+        const previewCanvas = document.querySelector('.preview-canvas') as HTMLCanvasElement;
+        previewCanvas.style.display = 'block';
+      }
       
       tileManager.drawAllTiles(ctx);
       canvasUpdatePendingRef.current = false;
@@ -207,16 +213,29 @@ export function FractalExplorer() {
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
         
+        // Ensure we're using fixed canvas dimensions to align tiles correctly
+        // Reset the canvas dimensions if they've been changed by browser resizing
+        if (canvas.width !== 800 || canvas.height !== 600) {
+          canvas.width = 800;
+          canvas.height = 600;
+          
+          const previewCanvas = document.querySelector('.preview-canvas') as HTMLCanvasElement;
+          if (previewCanvas) {
+            previewCanvas.width = 800;
+            previewCanvas.height = 600;
+          }
+        }
+        
         tileManager.drawAllTiles(ctx);
         console.log("Debounced canvas redraw completed");
         canvasUpdatePendingRef.current = false;
       }
       drawDebounceTimeoutRef.current = null;
     }, 100); // 100ms debounce for better batching
-  };
+  }, [tileManager]);
   
   // Handle tile update message from WebSocket
-  const handleTileUpdate = (message: {
+  const handleTileUpdate = useCallback((message: {
     jobId: string;
     tileId: string;
     x: number;
@@ -235,18 +254,22 @@ export function FractalExplorer() {
     // Check if this is a preview tile
     const isPreviewTile = message.tileId === "preview" || message.tileId.includes("preview");
     
-    // Get the appropriate canvas based on tile type
-    let canvas;
+    // For preview tiles, ensure the preview canvas is visible
     if (isPreviewTile) {
-      canvas = document.querySelector('.preview-canvas') as HTMLCanvasElement;
-      // Make sure the preview canvas is visible
-      if (canvas) {
-        canvas.style.display = 'block';
+      const previewCanvas = document.querySelector('.preview-canvas') as HTMLCanvasElement;
+      if (previewCanvas) {
+        // Make preview canvas visible and ensure it fills the container
+        previewCanvas.style.display = 'block';
+        // Set explicit dimensions for preview canvas
+        if (previewCanvas.width !== 800 || previewCanvas.height !== 600) {
+          previewCanvas.width = 800;
+          previewCanvas.height = 600;
+        }
       }
-    } else {
-      canvas = document.querySelector('.fractal-canvas') as HTMLCanvasElement;
     }
     
+    // Always use the main canvas for processing all tiles
+    const canvas = document.querySelector('.fractal-canvas') as HTMLCanvasElement;
     if (!canvas) {
       console.error('Canvas element not found when handling tile update');
       return;
@@ -271,10 +294,10 @@ export function FractalExplorer() {
     } else {
       console.warn(`No tile data returned for tile ${message.tileId}`);
     }
-  }
+  }, [renderState, tileManager, debouncedCanvasRedraw])
   
   // Handle progress update message from WebSocket
-  const handleProgressUpdate = (message: {
+  const handleProgressUpdate = useCallback((message: {
     progress: number;
     completedTiles: number;
     totalTiles: number;
@@ -318,13 +341,56 @@ export function FractalExplorer() {
       // Force a component update
       setForceUpdate(n => n + 1);
       
+      // Add a class to the body to indicate render is complete
+      document.body.classList.add('render-complete');
+      
       console.log("Render completed - setting loading state to false");
       
-      // Hide the preview canvas now that we're done
-      const previewCanvas = document.querySelector('.preview-canvas') as HTMLCanvasElement;
-      if (previewCanvas) {
-        previewCanvas.style.display = 'none';
-      }
+      // Immediately hide the preview and show the high-res tiles
+      const hidePreview = () => {
+        console.log(`HIDING PREVIEW CANVAS NOW - Render is marked as complete`);
+        const previewCanvas = document.querySelector('.preview-canvas') as HTMLCanvasElement;
+        
+        if (previewCanvas) {
+          // Completely remove the preview canvas from view using every technique possible
+          previewCanvas.style.display = 'none';
+          previewCanvas.style.opacity = '0';
+          previewCanvas.style.zIndex = '-1';
+          previewCanvas.style.visibility = 'hidden';
+          
+          // Force the main canvas to be visible and on top
+          const canvas = document.querySelector('.fractal-canvas') as HTMLCanvasElement;
+          if (canvas) {
+            canvas.style.zIndex = '20'; // Much higher z-index to ensure it's on top
+            canvas.style.opacity = '1';
+            canvas.style.visibility = 'visible';
+            
+            // Force redraw multiple times to ensure tiles are displayed
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              // Clear the canvas first
+              ctx.clearRect(0, 0, canvas.width, canvas.height);
+              tileManager.drawAllTiles(ctx);
+              
+              // Schedule additional redraws to catch any late tiles
+              for (let delay of [100, 300, 800]) {
+                setTimeout(() => {
+                  if (ctx) {
+                    tileManager.drawAllTiles(ctx);
+                    console.log(`Redrawing after ${delay}ms - ${tileManager.getRenderedTileCount()} tiles (${tileManager.getHighResTilesCount()} high-res)`);
+                  }
+                }, delay);
+              }
+            }
+          }
+        }
+      };
+      
+      // Execute immediately
+      hidePreview();
+      
+      // Also execute after a short delay as a backup
+      setTimeout(hidePreview, 500);
       
       // Do an immediate final refresh to ensure all tiles are properly rendered
       debouncedCanvasRedraw(true); // Use immediate mode
@@ -340,37 +406,35 @@ export function FractalExplorer() {
         }
       }, 300);
     }
-  }
+  }, [renderState, tileManager, debouncedCanvasRedraw, setForceUpdate])
   
   // Handle error message from WebSocket
-  const handleErrorMessage = (message: {
+  const handleErrorMessage = useCallback((message: {
     message: string;
     jobId: string;
     type: string;
   }) => {
     renderState.setError(message.message)
     setForceUpdate(n => n + 1)
-  }
+    
+    // Hide the preview canvas if there's an error
+    const previewCanvas = document.querySelector('.preview-canvas') as HTMLCanvasElement;
+    if (previewCanvas) {
+      previewCanvas.style.display = 'none';
+    }
+  }, [renderState, setForceUpdate])
   
   // Send a render request to the API
-  const requestRender = async () => {
+  const requestRender = useCallback(async () => {
     // Don't start a new render if reconnecting or already rendering
     if (reconnectingRef.current) {
       console.log("Skipping render request during WebSocket reconnection");
       return;
     }
     
-    // Don't start a new render if we're already rendering something
+    // Always allow new renders without confirmation popup
     if (renderState.isLoading && renderState.currentJobId) {
-      const confirmNewRender = window.confirm(
-        "A render is currently in progress. Start a new render anyway?"
-      );
-      
-      if (!confirmNewRender) {
-        console.log("User cancelled starting a new render during active render");
-        return;
-      }
-      console.log("User confirmed starting a new render - cancelling current render");
+      console.log("Starting a new render while another render is in progress");
     }
     
     try {
@@ -386,10 +450,23 @@ export function FractalExplorer() {
       // Start a new render job with empty ID (will be filled in when response arrives)
       renderState.startRender('');
       
+      // Remove the render-complete class when starting a new render
+      document.body.classList.remove('render-complete');
+      
       // Clear existing tiles when starting a new render
       // Keep preview tiles if this is a zoom or pan operation
       const isZoomOrPan = renderState.lastOperation === 'zoom' || renderState.lastOperation === 'pan';
       tileManager.clearCache(isZoomOrPan)
+      
+      // Make sure preview canvas is visible for new render
+      const previewCanvas = document.querySelector('.preview-canvas') as HTMLCanvasElement;
+      if (previewCanvas) {
+        console.log("Setting preview canvas to visible for new render");
+        previewCanvas.style.display = 'block';
+        previewCanvas.style.opacity = '1';
+        previewCanvas.style.zIndex = '10';
+        previewCanvas.style.visibility = 'visible';
+      }
       
       // Force component update to show loading state
       setForceUpdate(n => n + 1);
@@ -448,10 +525,10 @@ export function FractalExplorer() {
       renderState.setError(error instanceof Error ? error.message : 'Unknown error')
       setForceUpdate(n => n + 1);
     }
-  }
+  }, [webSocket, renderState, viewState, tileManager, reconnectingRef, setForceUpdate])
   
   // Handle zoom events
-  const handleZoom = (centerX: number, centerY: number, zoomFactor: number) => {
+  const handleZoom = useCallback((centerX: number, centerY: number, zoomFactor: number) => {
     // Calculate new zoom level
     const newZoom = viewState.zoom * zoomFactor
     
@@ -460,19 +537,29 @@ export function FractalExplorer() {
     // Update view state
     viewState.updateView(centerX, centerY, newZoom)
     
-    // Set the operation type in renderState before requesting render
+    // Explicitly mark this as a zoom operation for proper preview handling
     renderState.lastOperation = 'zoom';
+    renderState.isLoading = true; // Start loading immediately to update UI
+    
+    // Force making the preview canvas visible for zoom operations
+    const previewCanvas = document.querySelector('.preview-canvas') as HTMLCanvasElement;
+    if (previewCanvas) {
+      previewCanvas.style.display = 'block';
+      previewCanvas.style.opacity = '1';
+      previewCanvas.style.zIndex = '10';
+      previewCanvas.style.visibility = 'visible';
+    }
     
     // Request a new render whenever zoom changes
     requestRender()
-  }
+  }, [viewState, renderState, requestRender])
   
   // Track pan events to batch them
   const panDelayTimer = useRef<number | null>(null);
   const pendingPan = useRef<{ x: number, y: number } | null>(null);
   
   // Handle pan events with debouncing
-  const handlePan = (deltaX: number, deltaY: number) => {
+  const handlePan = useCallback((deltaX: number, deltaY: number) => {
     console.log(`handlePan called: deltaX=${deltaX}, deltaY=${deltaY}`);
     
     // Update view state immediately for visual feedback
@@ -500,27 +587,45 @@ export function FractalExplorer() {
       // Only request render if there's a pending pan
       if (pendingPan.current) {
         console.log(`Executing batched pan: ${pendingPan.current.x}, ${pendingPan.current.y}`);
-        // Set the operation type to pan
+        
+        // Explicitly mark this as a pan operation for proper preview handling
         renderState.lastOperation = 'pan';
+        renderState.isLoading = true; // Start loading immediately to update UI
+        
+        // Force making the preview canvas visible for pan operations
+        const previewCanvas = document.querySelector('.preview-canvas') as HTMLCanvasElement;
+        if (previewCanvas) {
+          previewCanvas.style.display = 'block';
+          previewCanvas.style.opacity = '1';
+          previewCanvas.style.zIndex = '10';
+          previewCanvas.style.visibility = 'visible';
+        }
+        
         requestRender();
         pendingPan.current = null;
       }
       panDelayTimer.current = null;
     }, 300); // 300ms delay - adjust as needed
-  }
+  }, [viewState, renderState, requestRender])
   
   // Handle parameter changes
-  const handleParamsChange = (maxIterations: number, colorScheme: string, tileSize: number) => {
+  const handleParamsChange = useCallback((maxIterations: number, colorScheme: string, tileSize: number) => {
     viewState.updateParams(maxIterations, colorScheme, tileSize)
     // Set the operation type to param-change
     renderState.lastOperation = 'param-change'
-  }
+  }, [viewState, renderState])
   
   // Handle reset
-  const handleReset = () => {
+  const handleReset = useCallback(() => {
     viewState.reset()
     renderState.reset()
-  }
+    
+    // Set operation type to reset to differentiate
+    renderState.lastOperation = 'reset';
+    
+    // Request a render with the reset view but preserved quality settings
+    requestRender();
+  }, [viewState, renderState, requestRender])
   
   // Track the theme preference
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -550,63 +655,46 @@ export function FractalExplorer() {
   }, [isDarkMode]);
   
   // Toggle the theme
-  const toggleTheme = () => {
-    setIsDarkMode(!isDarkMode);
-  };
+  const toggleTheme = useCallback(() => {
+    setIsDarkMode(prevMode => !prevMode);
+  }, []);
 
   return (
     <div className="fractal-explorer">
-      <div className="app-header">
-        <h1>OTelBrot Explorer</h1>
-        
-        <button 
-          onClick={toggleTheme} 
-          className="theme-toggle" 
-          title={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
-          aria-label={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
-        >
-          {isDarkMode ? (
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="5"></circle>
-              <line x1="12" y1="1" x2="12" y2="3"></line>
-              <line x1="12" y1="21" x2="12" y2="23"></line>
-              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
-              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
-              <line x1="1" y1="12" x2="3" y2="12"></line>
-              <line x1="21" y1="12" x2="23" y2="12"></line>
-              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
-              <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
-            </svg>
-          ) : (
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
-            </svg>
-          )}
-        </button>
+      <div className="explorer-sidebar">
+        <div className="sidebar-header">
+          <div className="app-title">OTelBrot Explorer v1.0</div>
+          <button 
+            onClick={toggleTheme} 
+            className="theme-toggle" 
+            title={isDarkMode ? "Light mode" : "Dark mode"}
+            aria-label={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
+          >
+            {isDarkMode ? "☀️" : "🌙"}
+          </button>
+        </div>
+      
+        <ControlPanel
+          viewState={viewState}
+          renderState={renderState}
+          onParamsChange={handleParamsChange}
+          onRender={requestRender}
+          onReset={handleReset}
+        />
       </div>
       
-      <div className="app-description">
-        Explore the Mandelbrot set through distributed OpenTelemetry rendering. Select areas to zoom in by holding Shift and dragging or use the arrow keys.
+      <div className="explorer-main">
+        <FractalCanvas
+          viewState={viewState}
+          renderState={renderState}
+          onZoom={handleZoom}
+          onPan={handlePan}
+        />
       </div>
-      
-      <ControlPanel
-        viewState={viewState}
-        renderState={renderState}
-        onParamsChange={handleParamsChange}
-        onRender={requestRender}
-        onReset={handleReset}
-      />
-      
-      <FractalCanvas
-        viewState={viewState}
-        renderState={renderState}
-        onZoom={handleZoom}
-        onPan={handlePan}
-      />
       
       <footer className="app-footer">
         <div className="otel-branding">
-          Powered by <span className="otel-logo">OpenTelemetry</span> distributed tracing
+          OTelBrot Explorer <span className="otel-logo">v1.0</span> | Powered by OpenTelemetry
         </div>
       </footer>
     </div>

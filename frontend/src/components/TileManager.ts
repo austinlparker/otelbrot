@@ -115,9 +115,6 @@ export class TileManager {
   // Track when we last did a full canvas redraw to avoid excessive redraws
   private lastRedrawTime = 0;
   
-  // Track canvas rendering state - used to control canvas clearing behavior
-  private hasPreviewBeenDrawn = false;
-  
   /**
    * Draw all the tiles with proper layering (high-res replaces low-res for same position)
    * Uses separate canvases for preview and detailed tiles
@@ -136,7 +133,29 @@ export class TileManager {
     
     // Only log when not drawing too frequently
     if (this.tileCache.size < 10 || now % 500 === 0) {
-      console.log(`Drawing ${this.tileCache.size} tiles`);
+      console.log(`Drawing ${this.tileCache.size} tiles (${this.getHighResTilesCount()} high-res)`);
+    }
+    
+    // Ensure UI is in correct state for drawing
+    // Check if this drawing is happening after a render is complete
+    const isRenderComplete = document.body.classList.contains('render-complete');
+    
+    if (isRenderComplete && this.getHighResTilesCount() > 0) {
+      // Hide preview canvas - render is complete with high-res tiles
+      const previewCanvas = document.querySelector('.preview-canvas') as HTMLCanvasElement;
+      if (previewCanvas) {
+        previewCanvas.style.display = 'none';
+        previewCanvas.style.opacity = '0';
+        previewCanvas.style.zIndex = '-1';
+      }
+      
+      // Ensure main canvas is visible and on top
+      const mainCanvas = ctx.canvas;
+      if (mainCanvas) {
+        mainCanvas.style.zIndex = '20';
+        mainCanvas.style.opacity = '1';
+        mainCanvas.style.visibility = 'visible';
+      }
     }
     
     // Clear the main canvas
@@ -198,21 +217,21 @@ export class TileManager {
     const medResTiles: TileData[] = [];
     const highResTiles: TileData[] = [];
     
-    // Determine which tiles to draw based on coverage
+    // Always draw all available tiles for maximum coverage
+    // Start with low-res for base coverage, then layer medium and high on top
     positionToTilesMap.forEach(posEntry => {
-      // Always add high-res tiles if available
-      if (posEntry.high) {
-        highResTiles.push(posEntry.high);
+      // Add all available tiles at each resolution level
+      // This ensures we always have full coverage, with higher res tiles on top
+      if (posEntry.low) {
+        lowResTiles.push(posEntry.low);
       }
       
-      // Add medium-res tiles if no high-res OR if high-res isn't fully loaded
-      if (posEntry.medium && (!posEntry.high)) {
+      if (posEntry.medium) {
         medResTiles.push(posEntry.medium);
       }
       
-      // Add low-res tiles if no higher resolution tiles for this position
-      if (posEntry.low && (!posEntry.medium && !posEntry.high)) {
-        lowResTiles.push(posEntry.low);
+      if (posEntry.high) {
+        highResTiles.push(posEntry.high);
       }
     });
     
@@ -241,19 +260,32 @@ export class TileManager {
       }
     };
     
-    // If we have a preview tile, draw it on the preview canvas
+    // If we have a preview tile, ALWAYS draw it on the preview canvas
+    // This is essential for zooming and panning operations
     const previewCanvas = document.querySelector('.preview-canvas') as HTMLCanvasElement;
     if (previewTile && previewCanvas) {
       const previewCtx = previewCanvas.getContext('2d');
       if (previewCtx) {
         try {
+          // Make the preview canvas visible during loading
+          previewCanvas.style.display = 'block';
+          previewCanvas.style.opacity = '1';
+          previewCanvas.style.zIndex = '10';
+          previewCanvas.style.visibility = 'visible';
+          
           tempCanvas.width = previewTile.width;
           tempCanvas.height = previewTile.height;
           tempCtx.putImageData(previewTile.imageData, 0, 0);
           
-          // Draw preview tile scaled to fill the entire preview canvas
+          // Draw the preview tile scaled to fill the entire canvas
+          // Clear the canvas first
+          previewCtx.fillStyle = 'black';
+          previewCtx.fillRect(0, 0, previewCanvas.width, previewCanvas.height);
+          // Draw the preview scaled to fill the entire canvas
           previewCtx.drawImage(tempCanvas, 0, 0, previewCanvas.width, previewCanvas.height);
-          this.hasPreviewBeenDrawn = true;
+          
+          // Log that we've drawn the preview
+          console.log("Preview tile drawn");
         } catch (error) {
           console.error('Error drawing preview tile:', error);
         }
@@ -270,17 +302,9 @@ export class TileManager {
       console.log(`Drew: ${lowResTiles.length} low, ${medResTiles.length} med, ${highResTiles.length} high tiles`);
     }
     
-    // If all tiles are loaded, hide the preview canvas
-    const regularTileCount = lowResTiles.length + medResTiles.length + highResTiles.length;
-    if (regularTileCount > 0 && this.tileCache.size > 3) {
-      // Check if we're close to completed (more than 95% of tiles loaded)
-      const isNearlyComplete = (regularTileCount / this.pendingTiles.size) > 0.95;
-      
-      if (isNearlyComplete && previewCanvas && this.hasPreviewBeenDrawn) {
-        // Hide the preview canvas when we're nearly done
-        previewCanvas.style.display = 'none';
-      }
-    }
+    // Let the FractalExplorer component handle showing/hiding the preview canvas
+    // based on the tile count and expected total tiles
+    // Rather than trying to make this decision here with incomplete information
   }
   
   /**
@@ -327,11 +351,21 @@ export class TileManager {
     } else {
       // Clear everything
       this.tileCache.clear();
-      // Reset preview flag when fully clearing the cache
-      this.hasPreviewBeenDrawn = false;
     }
     
     this.pendingTiles.clear();
+    
+    // After clearing cache, ensure the preview canvas is visible (if we're preserving it)
+    if (preservePreview) {
+      const previewCanvas = document.querySelector('.preview-canvas') as HTMLCanvasElement;
+      if (previewCanvas) {
+        previewCanvas.style.display = 'block';
+        previewCanvas.style.opacity = '1';
+        previewCanvas.style.zIndex = '10';
+        previewCanvas.style.visibility = 'visible';
+      }
+    }
+    
     console.log(`Cleared tile cache (preservePreview=${preservePreview})`);
   }
   
@@ -512,5 +546,35 @@ export class TileManager {
    */
   getAllTiles(): TileData[] {
     return Array.from(this.tileCache.values());
+  }
+  
+  /**
+   * Get count of loaded, non-preview tiles
+   * This is useful for determining when enough tiles have been rendered
+   * to hide the preview canvas
+   */
+  getRenderedTileCount(): number {
+    let count = 0;
+    this.tileCache.forEach(tile => {
+      if (tile.loaded && !tile.tileId.includes('preview')) {
+        count++;
+      }
+    });
+    return count;
+  }
+
+  /**
+   * Get count of loaded high-resolution tiles
+   * This helps determine when to hide the preview
+   */
+  getHighResTilesCount(): number {
+    let count = 0;
+    this.tileCache.forEach(tile => {
+      // Count only loaded, high resolution (level 3) tiles that aren't preview tiles
+      if (tile.loaded && tile.resolution === 3 && !tile.tileId.includes('preview')) {
+        count++;
+      }
+    });
+    return count;
   }
 }

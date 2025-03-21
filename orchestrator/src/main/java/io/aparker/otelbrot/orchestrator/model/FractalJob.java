@@ -138,17 +138,20 @@ public class FractalJob {
         this.updatedAt = ZonedDateTime.now();
         
         // Update job status based on completion
-        if (this.completedTiles == this.totalTiles && this.totalTiles > 0) {
+        // Mark as complete if at least all expected tiles are done
+        if (this.completedTiles >= this.totalTiles && this.totalTiles > 0) {
             this.status = JobStatus.COMPLETED;
         }
     }
 
-    // Calculate progress as a percentage
+    // Calculate progress as a percentage (capped at 100%)
     public double getProgress() {
         if (totalTiles == 0) {
             return 0.0;
         }
-        return (double) completedTiles / totalTiles * 100.0;
+        // Calculate progress but cap at 100%
+        double progress = (double) completedTiles / totalTiles * 100.0;
+        return Math.min(progress, 100.0);
     }
 
     @Override

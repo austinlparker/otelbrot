@@ -22,6 +22,10 @@
 - Go Worker: `cd go-worker && ./worker`
 - Local Redis: `docker run -d -p 6379:6379 redis:alpine`
 
+## Deployment
+- Helm: Update and deploy with `helm upgrade --install otelbrot-app ./helm-charts/otelbrot-app -n otelbrot`
+- Orchestrator logging: Configured in Helm values with reduced verbosity for OrchestrationService
+
 ## Code Style
 - Frontend: TypeScript with React functional components (React 19), no semicolons
 - Java: 4-space indentation, Java 21 features, Spring Boot microservices
