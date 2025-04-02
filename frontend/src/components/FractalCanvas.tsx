@@ -3,12 +3,7 @@ import { ViewState } from '../state/ViewState'
 import { RenderState } from '../state/RenderState'
 import './FractalCanvas.css'
 
-// Define TileManager interface for TypeScript typing
-declare global {
-  interface Window {
-    tileManager: any
-  }
-}
+// Import TileManager types (see FractalExplorer.tsx)
 
 interface FractalCanvasProps {
   viewState: ViewState
@@ -593,7 +588,8 @@ export function FractalCanvas({
             style={{
               display: renderState.isLoading ? 'block' : 'none',
               opacity: renderState.isLoading ? 1 : 0,
-              zIndex: renderState.isLoading ? 10 : 0 // Lower z-index when done loading
+              zIndex: renderState.isLoading ? 10 : 0, // Lower z-index when done loading
+              visibility: renderState.isLoading ? 'visible' : 'hidden'
             }}
           />
           

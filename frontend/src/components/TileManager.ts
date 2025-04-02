@@ -78,9 +78,9 @@ export class TileManager {
     this.tileCache.set(tileId, tileData);
     this.pendingTiles.delete(tileId);
     
-    // Periodically clean up old tiles
-    // Check jobId first to avoid unnecessary cleanup calls
-    if (jobId && this.tileCache.size > 50) {
+    // Periodically clean up old tiles - only when we have a lot of tiles
+    // Increased threshold to prevent premature clearing when sizing down tiles
+    if (jobId && this.tileCache.size > 200) {
       this.cleanupOldTiles(jobId);
     }
     
@@ -268,10 +268,14 @@ export class TileManager {
       if (previewCtx) {
         try {
           // Make the preview canvas visible during loading
-          previewCanvas.style.display = 'block';
-          previewCanvas.style.opacity = '1';
-          previewCanvas.style.zIndex = '10';
-          previewCanvas.style.visibility = 'visible';
+          // Only adjust the preview canvas visibility if we're still loading
+          // or don't have enough high-res tiles yet
+          if (!isRenderComplete || this.getHighResTilesCount() < 5) {
+            previewCanvas.style.display = 'block';
+            previewCanvas.style.opacity = '1';
+            previewCanvas.style.zIndex = '10';
+            previewCanvas.style.visibility = 'visible';
+          }
           
           tempCanvas.width = previewTile.width;
           tempCanvas.height = previewTile.height;
@@ -312,15 +316,93 @@ export class TileManager {
    * This keeps memory usage in check for long sessions
    */
   private cleanupOldTiles(currentJobId: string): void {
-    // Remove tiles from previous jobs
-    this.tileCache.forEach((tile, key) => {
+    // For visualization consistency, we want to be more careful when removing tiles
+    // Only remove tiles if we have way too many (increased from 50 to 200)
+    if (this.tileCache.size <= 200) {
+      return; // Don't clean up if we don't have that many tiles
+    }
+    
+    // Group tiles by position to prioritize keeping higher resolution tiles
+    // and avoid clearing visible areas during size changes
+    const positionMap = new Map<string, {
+      currentJob: TileData[],
+      previousJobs: TileData[]
+    }>();
+    
+    // First, organize tiles by position
+    this.tileCache.forEach((tile) => {
+      if (!positionMap.has(tile.position)) {
+        positionMap.set(tile.position, { currentJob: [], previousJobs: [] });
+      }
+      
       // Extract jobId from tileId (format: jobId:other:parts)
       const tileJobId = tile.tileId.split(':')[0];
       
-      if (tileJobId && tileJobId !== currentJobId && tileJobId !== 'preview') {
-        this.tileCache.delete(key);
+      // Skip preview tiles entirely
+      if (tileJobId === 'preview' || tile.tileId.includes('preview')) {
+        return;
+      }
+      
+      // Group by current vs previous job
+      const entry = positionMap.get(tile.position)!;
+      if (tileJobId === currentJobId) {
+        entry.currentJob.push(tile);
+      } else {
+        entry.previousJobs.push(tile);
       }
     });
+    
+    // Now prioritize which tiles to remove
+    const tilesToRemove = new Set<string>();
+    
+    // First, find positions where we have both current and previous job tiles
+    // We can safely remove previous job tiles for these positions
+    positionMap.forEach((entry) => {
+      // If we have current job tiles for this position, we can remove previous job tiles
+      if (entry.currentJob.length > 0 && entry.previousJobs.length > 0) {
+        entry.previousJobs.forEach(tile => {
+          tilesToRemove.add(tile.tileId);
+        });
+      }
+    });
+    
+    // If we still need to remove more tiles, remove the oldest tiles from previous jobs
+    // Sort all previous job tiles by job ID (which often contains timestamp)
+    if (tilesToRemove.size < (this.tileCache.size - 150)) {
+      const allPreviousJobTiles: TileData[] = [];
+      
+      positionMap.forEach(entry => {
+        allPreviousJobTiles.push(...entry.previousJobs);
+      });
+      
+      // Sort by job ID (assuming job IDs have some chronological ordering)
+      allPreviousJobTiles.sort((a, b) => {
+        const jobIdA = a.tileId.split(':')[0];
+        const jobIdB = b.tileId.split(':')[0];
+        return jobIdA.localeCompare(jobIdB);
+      });
+      
+      // Mark oldest tiles for removal, keeping below the threshold
+      const targetSize = this.tileCache.size - tilesToRemove.size;
+      const maxTilesToKeep = 150; // Keep at most 150 tiles
+      
+      if (targetSize > maxTilesToKeep) {
+        const additionalTilesToRemove = targetSize - maxTilesToKeep;
+        
+        for (let i = 0; i < Math.min(additionalTilesToRemove, allPreviousJobTiles.length); i++) {
+          tilesToRemove.add(allPreviousJobTiles[i].tileId);
+        }
+      }
+    }
+    
+    // Finally, remove the tiles we've marked for deletion
+    tilesToRemove.forEach(tileId => {
+      this.tileCache.delete(tileId);
+    });
+    
+    if (tilesToRemove.size > 0) {
+      console.log(`Cleaned up ${tilesToRemove.size} old tiles, ${this.tileCache.size} remaining`);
+    }
   }
   
   /**

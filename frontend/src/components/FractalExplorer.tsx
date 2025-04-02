@@ -6,6 +6,8 @@ import { ViewState } from '../state/ViewState'
 import { RenderState } from '../state/RenderState'
 import './FractalExplorer.css'
 
+// TileManager is defined in global.d.ts
+
 /**
  * API URL for rendering requests
  */
@@ -260,11 +262,17 @@ export function FractalExplorer() {
       if (previewCanvas) {
         // Make preview canvas visible and ensure it fills the container
         previewCanvas.style.display = 'block';
+        previewCanvas.style.opacity = '1';
+        previewCanvas.style.zIndex = '10';
+        previewCanvas.style.visibility = 'visible';
+        
         // Set explicit dimensions for preview canvas
         if (previewCanvas.width !== 800 || previewCanvas.height !== 600) {
           previewCanvas.width = 800;
           previewCanvas.height = 600;
         }
+        
+        console.log("Preview tile received - making preview canvas visible");
       }
     }
     
@@ -373,7 +381,7 @@ export function FractalExplorer() {
               tileManager.drawAllTiles(ctx);
               
               // Schedule additional redraws to catch any late tiles
-              for (let delay of [100, 300, 800]) {
+              for (const delay of [100, 300, 800]) {
                 setTimeout(() => {
                   if (ctx) {
                     tileManager.drawAllTiles(ctx);
@@ -466,6 +474,12 @@ export function FractalExplorer() {
         previewCanvas.style.opacity = '1';
         previewCanvas.style.zIndex = '10';
         previewCanvas.style.visibility = 'visible';
+        
+        // Ensure preview canvas has correct dimensions
+        if (previewCanvas.width !== 800 || previewCanvas.height !== 600) {
+          previewCanvas.width = 800;
+          previewCanvas.height = 600;
+        }
       }
       
       // Force component update to show loading state

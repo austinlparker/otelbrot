@@ -1,28 +1,40 @@
 # OTelBrot Development Guide
 
-## Build Commands
-- Frontend: `cd frontend && npm run build` (TypeScript + Vite)
-- Frontend Dev: `cd frontend && npm run dev` (Vite dev server)
-- Frontend Preview: `cd frontend && npm run preview` (Local preview build)
-- Orchestrator: `cd orchestrator && ./mvnw clean install`
-- Go Worker: `cd go-worker && go build ./cmd/worker`
-- Commons: `cd commons && ./mvnw clean install`
+> **IMPORTANT**: Always run all commands from the project root directory.
 
-## Test/Lint Commands
-- Frontend Lint: `cd frontend && npm run lint`
-- Orchestrator Test: `cd orchestrator && ./mvnw test`
-- Go Worker Test: `cd go-worker && go test -v ./internal/... ./cmd/...`
-- Single Test (Java): `./mvnw test -Dtest=TestClass#testMethod`
-- Single Package Test (Java): `./mvnw test -Dtest="io.aparker.otelbrot.package.*"`
-- Debug Test (Java): `./mvnw test -Dtest=TestClass -Dmaven.surefire.debug`
+## Build Commands (Make)
+- All Components: `make build` (preferred method)
+- Frontend Only: `make build-frontend` (includes linting)
+- Orchestrator Only: `make build-orchestrator`
+- Go Worker Only: `make build-go-worker`
+- Docker Images: `make docker-build`
 
-## Run Commands
-- Frontend: `cd frontend && npm run dev`
-- Orchestrator: `cd orchestrator && ./mvnw spring-boot:run`
-- Go Worker: `cd go-worker && ./worker`
-- Local Redis: `docker run -d -p 6379:6379 redis:alpine`
+## Test Commands (Make)
+- All Tests: `make test` (preferred method)
+- Frontend Tests: `make test-frontend`
+- Orchestrator Tests: `make test-orchestrator`
+- Go Worker Tests: `make test-go-worker`
 
-## Deployment
+## Run Commands (Make)
+Use the following commands from the project root directory:
+- Run Frontend Dev Server: `make frontend-dev` (runs Vite dev server)
+- Run Orchestrator: `make orchestrator-run`
+- Run Go Worker: `make worker-run`
+- Run Redis Locally: `make redis-run`
+
+## Advanced Testing (Java)
+- Single Test: `make java-test TEST_CLASS=TestClass#testMethod`
+- Package Test: `make java-test TEST_CLASS="io.aparker.otelbrot.package.*"`
+- Debug Test: `make java-test-debug TEST_CLASS=TestClass`
+
+## Deployment (Make)
+- Full Deployment: `make helm-deploy` (preferred method, installs all components)
+- Application Only: `make helm-install-otelbrot-app` (installs/upgrades app only)
+- Quick Upgrade: `make helm-upgrade` (upgrades app without rebuilding dependencies)
+- Cleanup: `make helm-cleanup` (removes application resources)
+- Full Cleanup: `make helm-cleanup-all` (removes everything including operators)
+
+## Direct Deployment (Alternative)
 - Helm: Update and deploy with `helm upgrade --install otelbrot-app ./helm-charts/otelbrot-app -n otelbrot`
 - Orchestrator logging: Configured in Helm values with reduced verbosity for OrchestrationService
 
