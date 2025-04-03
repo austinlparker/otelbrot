@@ -11,9 +11,11 @@ ingress:
   frontendHost: "otelbrot.local"
   metricsHost: "metrics.otelbrot.local"
   annotations:
-    # These default settings work well with kind + nginx-ingress
-    nginx.ingress.kubernetes.io/use-regex: "true"
-    nginx.ingress.kubernetes.io/rewrite-target: /$1
+    # SPA-friendly settings for nginx-ingress
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_headers "X-Content-Type-Options: nosniff";
+    # Don't use path rewrites for SPAs
+    nginx.ingress.kubernetes.io/use-regex: "false"
     # Uncomment to enable sticky sessions if needed
     # nginx.ingress.kubernetes.io/affinity: "cookie"
     # nginx.ingress.kubernetes.io/session-cookie-name: "route"

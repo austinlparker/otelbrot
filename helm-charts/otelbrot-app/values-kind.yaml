@@ -29,8 +29,11 @@ ingress:
   frontendHost: "otelbrot.local"
   metricsHost: "metrics.otelbrot.local"
   annotations:
-    nginx.ingress.kubernetes.io/use-regex: "true"
-    nginx.ingress.kubernetes.io/rewrite-target: /$1
+    # Ensure proper content type handling
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_headers "X-Content-Type-Options: nosniff";
+    # Don't use path rewrites for SPAs
+    nginx.ingress.kubernetes.io/use-regex: "false"
 
 # Resource limits for a powerful arm64 machine with 128 cores and hundreds of GB of memory
 redis:
