@@ -183,3 +183,33 @@ collector:
         port: 4318
       metrics:
         port: 8888
+
+# Go worker configuration
+goWorker:
+  enabled: true
+  replicas: 2
+  image:
+    repository: otelbrot/go-worker
+    tag: latest
+    pullPolicy: IfNotPresent
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  env:
+    - name: REDIS_ADDR
+      value: "redis:6379"
+    - name: JOB_QUEUE
+      value: "fractal_jobs"
+    - name: RESULT_TOPIC
+      value: "fractal_results"
+    - name: LOG_LEVEL
+      value: "info"
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 80
