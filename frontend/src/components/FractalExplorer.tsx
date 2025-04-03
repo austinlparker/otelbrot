@@ -623,8 +623,8 @@ export function FractalExplorer() {
   }, [viewState, renderState, requestRender])
   
   // Handle parameter changes
-  const handleParamsChange = useCallback((maxIterations: number, colorScheme: string, tileSize: number) => {
-    viewState.updateParams(maxIterations, colorScheme, tileSize)
+  const handleParamsChange = useCallback((maxIterations: number, colorScheme: string, tileSize: number, maxConcurrency: number) => {
+    viewState.updateParams(maxIterations, colorScheme, tileSize, maxConcurrency)
     // Set the operation type to param-change
     renderState.lastOperation = 'param-change'
   }, [viewState, renderState])

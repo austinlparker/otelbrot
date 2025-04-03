@@ -6,7 +6,7 @@ import './ControlPanel.css'
 interface ControlPanelProps {
   viewState: ViewState
   renderState: RenderState
-  onParamsChange: (maxIterations: number, colorScheme: string, tileSize: number) => void
+  onParamsChange: (maxIterations: number, colorScheme: string, tileSize: number, maxConcurrency: number) => void
   onRender: () => void
   onReset: () => void
 }
@@ -21,6 +21,7 @@ export function ControlPanel({
   const [maxIterations, setMaxIterations] = useState(viewState.maxIterations)
   const [colorScheme, setColorScheme] = useState(viewState.colorScheme)
   const [tileSize, setTileSize] = useState(viewState.tileSize)
+  const [maxConcurrency, setMaxConcurrency] = useState(viewState.maxConcurrency)
   
   // Format progress percentage
   const progressPercent = renderState.progress.toFixed(1)
@@ -47,7 +48,7 @@ export function ControlPanel({
   
   // Apply changes when controls are modified
   const applyChanges = () => {
-    onParamsChange(maxIterations, colorScheme, tileSize)
+    onParamsChange(maxIterations, colorScheme, tileSize, maxConcurrency)
   }
   
   return (
@@ -94,7 +95,7 @@ export function ControlPanel({
             value={colorScheme}
             onChange={(e) => {
               setColorScheme(e.target.value)
-              onParamsChange(maxIterations, e.target.value, tileSize)
+              onParamsChange(maxIterations, e.target.value, tileSize, maxConcurrency)
             }}
           >
             <option value="classic">Classic</option>
@@ -121,6 +122,25 @@ export function ControlPanel({
             <span>64</span>
             <span className="value">{tileSize}</span>
             <span>512</span>
+          </div>
+        </div>
+
+        <div className="control-group">
+          <label htmlFor="maxConcurrency">Worker Concurrency</label>
+          <input
+            id="maxConcurrency"
+            type="range"
+            min="1"
+            max="100"
+            step="1"
+            value={maxConcurrency}
+            onChange={(e) => setMaxConcurrency(parseInt(e.target.value))}
+            onMouseUp={applyChanges}
+          />
+          <div className="range-values">
+            <span>1</span>
+            <span className="value">{maxConcurrency}</span>
+            <span>100</span>
           </div>
         </div>
       </div>

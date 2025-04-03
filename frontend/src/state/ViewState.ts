@@ -8,6 +8,7 @@ export class ViewState {
   maxIterations: number
   colorScheme: string
   tileSize: number
+  maxConcurrency: number
   currentJobId: string | null
   tileCache: Map<string, ImageData>
 
@@ -19,6 +20,7 @@ export class ViewState {
     this.maxIterations = 100
     this.colorScheme = 'classic'
     this.tileSize = 256
+    this.maxConcurrency = 10
     this.currentJobId = null
     this.tileCache = new Map<string, ImageData>()
   }
@@ -31,6 +33,7 @@ export class ViewState {
     const currentMaxIterations = this.maxIterations;
     const currentColorScheme = this.colorScheme;
     const currentTileSize = this.tileSize;
+    const currentMaxConcurrency = this.maxConcurrency;
     
     // Reset view position
     this.centerX = -0.5
@@ -41,6 +44,7 @@ export class ViewState {
     this.colorScheme = currentColorScheme;
     this.maxIterations = currentMaxIterations;
     this.tileSize = currentTileSize;
+    this.maxConcurrency = currentMaxConcurrency;
     
     // Clear the cache
     this.clearCache()
@@ -84,10 +88,11 @@ export class ViewState {
   /**
    * Update the render parameters
    */
-  updateParams(maxIterations: number, colorScheme: string, tileSize: number): void {
+  updateParams(maxIterations: number, colorScheme: string, tileSize: number, maxConcurrency: number): void {
     this.maxIterations = maxIterations
     this.colorScheme = colorScheme
     this.tileSize = tileSize
+    this.maxConcurrency = maxConcurrency
     // When params change, we need a new render
     this.clearCache()
   }
@@ -125,6 +130,7 @@ export class ViewState {
     height: number;
     colorScheme: string;
     tileSize: number;
+    maxConcurrency: number;
   } {
     return {
       centerX: this.centerX,
@@ -134,7 +140,8 @@ export class ViewState {
       width,
       height,
       colorScheme: this.colorScheme,
-      tileSize: this.tileSize
+      tileSize: this.tileSize,
+      maxConcurrency: this.maxConcurrency
     }
   }
 }

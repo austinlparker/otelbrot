@@ -79,7 +79,7 @@ public class OrchestrationService {
     @Value("${app.tile.max-size:256}")
     private int maxTileSize;
 
-    @Value("${app.worker.max-concurrent:2}")
+    @Value("${app.worker.max-concurrent:100}")
     private int maxConcurrentWorkers;
 
     @Value("${app.worker.image-pull-policy:Never}")
@@ -568,8 +568,11 @@ public class OrchestrationService {
         @SpanAttribute("traceparent") String traceparent,
         @SpanAttribute("tracestate") String tracestate
     ) {
-        // Check if we're at maximum worker capacity and this is not a priority job
-        int maxWorkers = Math.min(getAvailableCores(), maxConcurrentWorkers);
+        // Get the job's maxConcurrency if available
+        Optional<FractalJob> fractalJob = jobRepository.findById(jobId);
+        int maxWorkers = fractalJob
+            .map(j -> j.getMaxConcurrency() != null ? j.getMaxConcurrency() : maxConcurrentWorkers)
+            .orElse(maxConcurrentWorkers);
 
         if (activeWorkerCount >= maxWorkers && !isPriority) {
             logger.info(
@@ -905,8 +908,8 @@ public class OrchestrationService {
     @WithSpan("OrchestrationService.processJobQueue")
     @Scheduled(fixedDelay = 250) // Check for jobs every 250ms for faster response
     private synchronized void processJobQueue() {
-        // Only process if we have capacity
-        int maxWorkers = Math.min(getAvailableCores(), maxConcurrentWorkers);
+        // Only process if we have capacity - use default maxConcurrentWorkers for queue processing
+        int maxWorkers = maxConcurrentWorkers;
         int availableSlots = maxWorkers - activeWorkerCount;
         
         Span span = Span.current();

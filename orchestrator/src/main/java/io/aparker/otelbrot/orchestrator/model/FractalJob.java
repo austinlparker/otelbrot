@@ -17,6 +17,7 @@ public class FractalJob {
     private final int height;
     private final String colorScheme;
     private final Integer tileSize;
+    private final Integer maxConcurrency;
     private JobStatus status;
     private final ZonedDateTime createdAt;
     private ZonedDateTime updatedAt;
@@ -33,6 +34,7 @@ public class FractalJob {
         this.height = builder.height;
         this.colorScheme = builder.colorScheme;
         this.tileSize = builder.tileSize;
+        this.maxConcurrency = builder.maxConcurrency;
         this.status = builder.status;
         this.createdAt = builder.createdAt;
         this.updatedAt = builder.updatedAt;
@@ -52,6 +54,7 @@ public class FractalJob {
                 .height(request.getHeight())
                 .colorScheme(request.getColorScheme())
                 .tileSize(request.getTileSize())
+                .maxConcurrency(request.getMaxConcurrency())
                 .status(JobStatus.CREATED)
                 .createdAt(ZonedDateTime.now())
                 .updatedAt(ZonedDateTime.now())
@@ -95,6 +98,10 @@ public class FractalJob {
     
     public Integer getTileSize() {
         return tileSize;
+    }
+
+    public Integer getMaxConcurrency() {
+        return maxConcurrency;
     }
 
     public JobStatus getStatus() {
@@ -178,6 +185,7 @@ public class FractalJob {
         private int height;
         private String colorScheme;
         private Integer tileSize;
+        private Integer maxConcurrency;
         private JobStatus status = JobStatus.CREATED;
         private ZonedDateTime createdAt = ZonedDateTime.now();
         private ZonedDateTime updatedAt = ZonedDateTime.now();
@@ -226,6 +234,11 @@ public class FractalJob {
         
         public Builder tileSize(Integer tileSize) {
             this.tileSize = tileSize;
+            return this;
+        }
+
+        public Builder maxConcurrency(Integer maxConcurrency) {
+            this.maxConcurrency = maxConcurrency;
             return this;
         }
 

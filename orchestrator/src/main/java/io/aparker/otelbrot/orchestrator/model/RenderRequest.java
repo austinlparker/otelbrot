@@ -43,6 +43,10 @@ public class RenderRequest {
     @Max(value = 512, message = "Tile size cannot exceed 512")
     private Integer tileSize;
     
+    @Min(value = 1, message = "Max concurrency must be at least 1")
+    @Max(value = 100, message = "Max concurrency cannot exceed 100")
+    private Integer maxConcurrency = 10;
+    
     // Constructors
     public RenderRequest() {}
     
@@ -67,6 +71,20 @@ public class RenderRequest {
         this.height = height;
         this.colorScheme = colorScheme;
         this.tileSize = tileSize;
+    }
+    
+    public RenderRequest(Double centerX, Double centerY, Double zoom, Integer maxIterations, 
+                        Integer width, Integer height, String colorScheme, Integer tileSize,
+                        Integer maxConcurrency) {
+        this.centerX = centerX;
+        this.centerY = centerY;
+        this.zoom = zoom;
+        this.maxIterations = maxIterations;
+        this.width = width;
+        this.height = height;
+        this.colorScheme = colorScheme;
+        this.tileSize = tileSize;
+        this.maxConcurrency = maxConcurrency;
     }
     
     // Getters and Setters
@@ -132,5 +150,13 @@ public class RenderRequest {
     
     public void setTileSize(Integer tileSize) {
         this.tileSize = tileSize;
+    }
+    
+    public Integer getMaxConcurrency() {
+        return maxConcurrency;
+    }
+    
+    public void setMaxConcurrency(Integer maxConcurrency) {
+        this.maxConcurrency = maxConcurrency;
     }
 }
