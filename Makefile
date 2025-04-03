@@ -149,6 +149,29 @@ helm-upgrade:
 		>/dev/null 2>&1 || { echo "❌ Otelbrot application upgrade failed"; exit 1; }
 	@echo "✓ Otelbrot application upgraded successfully."
 
+# Upgrade only the ingress configuration
+helm-upgrade-ingress:
+	@echo "Upgrading ingress configuration..."
+	@kubectl delete ingress -n otelbrot otelbrot-app-frontend otelbrot-app-otel-lgtm --ignore-not-found
+	@helm upgrade otelbrot-app ./helm-charts/otelbrot-app \
+		--namespace otelbrot \
+		--set otelLgtm.enabled=true \
+		|| { echo "❌ Ingress upgrade failed"; exit 1; }
+	@echo "✓ Ingress configuration upgraded successfully. It may take a moment for the new ingress to be available."
+
+# Upgrade only the ingress configuration for kind clusters
+kind-upgrade-ingress:
+	@echo "Upgrading kind ingress configuration..."
+	@kubectl delete ingress -n otelbrot otelbrot-app-frontend otelbrot-app-otel-lgtm --ignore-not-found
+	@helm upgrade otelbrot-app ./helm-charts/otelbrot-app \
+		--namespace otelbrot \
+		--set otelLgtm.enabled=true \
+		-f ./helm-charts/otelbrot-app/values-kind.yaml \
+		|| { echo "❌ Kind ingress upgrade failed"; exit 1; }
+	@echo "✓ Kind ingress configuration upgraded successfully. It may take a moment for the new ingress to be available."
+	@echo "You can access the application at: http://otelbrot.local"
+	@echo "You can access the metrics dashboard at: http://metrics.otelbrot.local"
+
 # Deploy everything with Helm
 helm-deploy: docker-build helm-install-namespaces helm-install-otel-operator helm-install-otel-gateway-collector helm-install-otelbrot-app
 	@echo "✓ Deployment complete. Use 'kubectl get pods -n otelbrot' to check status."
@@ -261,6 +284,8 @@ help:
 	@echo "Deployment Targets (Helm-based):"
 	@echo "  helm-deploy                     Deploy everything using Helm (recommended)"
 	@echo "  helm-upgrade                    Upgrade only the application without rebuilding dependencies"
+	@echo "  helm-upgrade-ingress            Upgrade only the ingress configuration (fixes MIME type issues)"
+	@echo "  kind-upgrade-ingress            Upgrade only the ingress configuration for kind clusters (fixes MIME type issues)"
 	@echo "  helm-install-otelbrot-app       Install/Upgrade otelbrot app using Helm"
 	@echo "  helm-cleanup                    Clean up application resources"
 	@echo "  helm-cleanup-all                Clean up everything including operators"
