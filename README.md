@@ -77,14 +77,43 @@ This will:
 1. Build Docker images for all components
 2. Create required namespaces
 3. Install OpenTelemetry Operator and Collectors
-4. Deploy the LGTM stack (Loki, Grafana, Tempo, Mimir)
+4. Deploy the OTEL-LGTM all-in-one container (Loki, Grafana, Tempo, Prometheus/Mimir)
 5. Deploy application components (Frontend, Orchestrator, Workers)
 
 #### Prerequisites
 
 - Kubernetes cluster with access to push images
-- Honeycomb API key (set as `HONEYCOMB_API_KEY` environment variable)
 - Helm 3+
+
+### Local Deployment with kind
+
+For local development and testing, you can use [kind](https://kind.sigs.k8s.io/) (Kubernetes in Docker):
+
+```bash
+# Set up a new kind cluster with ingress support
+make kind-setup
+
+# Deploy the application to kind
+make kind-deploy
+```
+
+The configuration is optimized for high-performance ARM64 machines with 128 cores and hundreds of GB of memory:
+
+- 12-node cluster with dedicated nodes for compute workloads
+- Support for up to 500 concurrent worker pods
+- Enhanced Redis configuration for high concurrency
+- Kubernetes API server optimized for large clusters
+- Increased thread pools and queue capacity in the orchestrator
+- Expanded max-pods limits on all nodes (220 pods per node)
+
+After deployment, the application will be available at:
+- Frontend: http://otelbrot.local
+- Metrics/Grafana: http://metrics.otelbrot.local
+
+You may need to add these hostnames to your /etc/hosts file:
+```
+127.0.0.1 otelbrot.local metrics.otelbrot.local
+```
 
 #### Cleaning Up
 
@@ -94,6 +123,9 @@ make helm-cleanup
 
 # Clean up everything including operators and namespaces
 make helm-cleanup-all
+
+# Delete the kind cluster
+kind delete cluster --name otelbrot
 ```
 
 ## Features

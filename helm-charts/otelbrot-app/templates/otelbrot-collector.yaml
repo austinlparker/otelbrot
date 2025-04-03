@@ -57,22 +57,22 @@ spec:
     exporters:
       debug: 
         verbosity: {{ .Values.collector.config.exporters.debug.verbosity | default "normal" }}
-      otlp/gateway:
-        endpoint: {{ .Values.collector.config.exporters.otlp_gateway.endpoint | default "otel-gateway-collector-agent.otelbrot.svc.cluster.local:4317" }}
+      otlp/lgtm:
+        endpoint: {{ .Release.Name }}-otel-lgtm.{{ .Release.Namespace }}.svc.cluster.local:4317
         tls:
-          insecure: {{ .Values.collector.config.exporters.otlp_gateway.tls.insecure | default true }}
+          insecure: true
 
     service:
       pipelines:
         traces:
           receivers: [otlp]
           processors: [memory_limiter, k8sattributes, resource, batch]
-          exporters: [debug, otlp/gateway]
+          exporters: [debug, otlp/lgtm]
         metrics:
           receivers: [otlp]
           processors: [memory_limiter, k8sattributes, resource, batch]
-          exporters: [debug, otlp/gateway]
+          exporters: [debug, otlp/lgtm]
         logs:
           receivers: [otlp]
           processors: [memory_limiter, k8sattributes, resource, batch]
-          exporters: [debug, otlp/gateway]
+          exporters: [debug, otlp/lgtm]

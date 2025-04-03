@@ -1,0 +1,40 @@
+# Values for Grafana OTEL-LGTM
+# Based on https://grafana.com/blog/2024/03/13/an-opentelemetry-backend-in-a-docker-image-introducing-grafana/otel-lgtm/
+
+nameOverride: "otel-lgtm"
+fullnameOverride: "otel-lgtm"
+
+image:
+  repository: grafana/otel-lgtm
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  ports:
+    otelGrpc:
+      port: 4317
+      targetPort: 4317
+      protocol: TCP
+    otelHttp:
+      port: 4318
+      targetPort: 4318
+      protocol: TCP
+    grafana:
+      port: 3000
+      targetPort: 3000
+      protocol: TCP
+
+resources:
+  limits:
+    cpu: 2000m
+    memory: 4Gi
+  requests:
+    cpu: 500m
+    memory: 2Gi
+
+persistence:
+  enabled: true
+  size: 10Gi
+  accessMode: ReadWriteOnce
+  storageClass: ""  # Use default storage class

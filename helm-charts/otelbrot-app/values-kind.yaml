@@ -1,0 +1,102 @@
+# Values override for kind deployment
+# These settings are optimized for running in a kind cluster
+
+# Enable ingress resources with appropriate hostnames for local development
+ingress:
+  enabled: true
+  className: "nginx"
+  frontendHost: "otelbrot.local"
+  metricsHost: "metrics.otelbrot.local"
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$1
+
+# Resource limits for a powerful arm64 machine with 128 cores and hundreds of GB of memory
+redis:
+  resources:
+    limits:
+      cpu: 8
+      memory: 16Gi
+    requests:
+      cpu: 2
+      memory: 8Gi
+  # Set Redis configuration for higher connection limit and performance
+  config:
+    maxclients: 10000
+    timeout: 0
+    tcp-keepalive: 300
+    maxmemory-policy: "allkeys-lru"
+    appendonly: "yes"
+    maxmemory: "12gb"
+
+orchestrator:
+  resources:
+    limits:
+      cpu: 16
+      memory: 32Gi
+    requests:
+      cpu: 4
+      memory: 16Gi
+  # Increase concurrency for better performance
+  env:
+    - name: SPRING_DATA_REDIS_HOST
+      value: "redis"
+    - name: SPRING_DATA_REDIS_PORT
+      value: "6379"
+    - name: SPRING_PROFILES_ACTIVE
+      value: "dev"
+    - name: OTEL_SERVICE_NAME
+      value: "otelbrot-orchestrator"
+    - name: OTEL_EXPERIMENTAL_CONFIG_FILE
+      value: "/etc/otel/otel-agent-config.yaml"
+    # Set logging levels
+    - name: LOGGING_LEVEL_ROOT
+      value: "INFO"
+    - name: LOGGING_LEVEL_IO_APARKER_OTELBROT_ORCHESTRATOR_SERVICE_ORCHESTRATIONSERVICE
+      value: "WARN"
+    - name: LOGGING_LEVEL_IO_APARKER_OTELBROT_ORCHESTRATOR_CONTROLLER
+      value: "INFO"
+    - name: LOGGING_LEVEL_IO_APARKER_OTELBROT_ORCHESTRATOR_WEBSOCKET
+      value: "INFO"
+    # High concurrency Redis configuration
+    - name: APP_REDIS_STREAM_READ_TIMEOUT
+      value: "1"
+    - name: APP_WORKER_MAX_CONCURRENT
+      value: "500"  # Increase to allow 500 concurrent workers
+    - name: SPRING_TASK_EXECUTION_POOL_CORE-SIZE
+      value: "64"
+    - name: SPRING_TASK_EXECUTION_POOL_MAX-SIZE
+      value: "128"
+    - name: SPRING_TASK_EXECUTION_POOL_QUEUE-CAPACITY
+      value: "2000"
+
+frontend:
+  resources:
+    limits:
+      cpu: 8
+      memory: 4Gi
+    requests:
+      cpu: 2
+      memory: 1Gi
+
+collector:
+  mode: deployment
+  replicas: 4  # Increase replicas for better performance
+  resources:
+    limits:
+      cpu: 8
+      memory: 16Gi
+    requests:
+      cpu: 2
+      memory: 4Gi
+
+otelLgtm:
+  resources:
+    limits:
+      cpu: 16
+      memory: 64Gi
+    requests:
+      cpu: 4
+      memory: 16Gi
+  persistence:
+    size: 100Gi  # Larger size for more data retention

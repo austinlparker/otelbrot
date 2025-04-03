@@ -1,0 +1,72 @@
+{{- if .Values.goWorker.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-go-worker
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "otelbrot-app.labels" . | nindent 4 }}
+    app: go-worker
+spec:
+  replicas: {{ .Values.goWorker.replicas | default 2 }}
+  selector:
+    matchLabels:
+      {{- include "otelbrot-app.selectorLabels" . | nindent 6 }}
+      app: go-worker
+  template:
+    metadata:
+      labels:
+        {{- include "otelbrot-app.selectorLabels" . | nindent 8 }}
+        app: go-worker
+      annotations:
+        rollme: {{ .Release.Revision | quote }}
+        checksum/config: {{ include (print $.Template.BasePath "/configmaps/go-worker-otel-config.yaml") . | sha256sum }}
+    spec:
+      volumes:
+        - name: otel-config
+          configMap:
+            name: go-worker-otel-config
+      containers:
+        - name: go-worker
+          image: {{ .Values.goWorker.image.repository }}:{{ .Values.goWorker.image.tag | default "latest" }}
+          imagePullPolicy: {{ .Values.goWorker.image.pullPolicy | default "IfNotPresent" }}
+          env:
+          {{- if .Values.goWorker.env }}
+            {{- toYaml .Values.goWorker.env | nindent 12 }}
+          {{- end }}
+            # Add OTEL config file
+            - name: OTEL_CONFIG_FILE
+              value: "/etc/otel/otel-config.yaml"
+          resources:
+            {{- toYaml .Values.goWorker.resources | nindent 12 }}
+          volumeMounts:
+            - name: otel-config
+              mountPath: /etc/otel
+              readOnly: true
+
+{{- if .Values.goWorker.autoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ .Release.Name }}-go-worker-hpa
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "otelbrot-app.labels" . | nindent 4 }}
+    app: go-worker
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ .Release.Name }}-go-worker
+  minReplicas: {{ .Values.goWorker.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.goWorker.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.goWorker.autoscaling.targetCPUUtilizationPercentage }}
+{{- end }}
+{{- end }}

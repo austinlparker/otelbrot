@@ -1,6 +1,6 @@
 # OTEL-Monte Makefile
 
-.PHONY: test test-frontend test-orchestrator test-go-worker clean build build-frontend build-orchestrator build-go-worker docker-build install-cert-manager create-honeycomb-secret helm-install-namespaces helm-add-repos helm-install-otel-operator helm-install-otel-gateway-collector helm-install-lgtm-distributed clean-conflicting-resources helm-install-otelbrot-app helm-deploy helm-upgrade helm-cleanup helm-cleanup-all frontend-dev orchestrator-run worker-run redis-run java-test java-test-debug help
+.PHONY: test test-frontend test-orchestrator test-go-worker clean build build-frontend build-orchestrator build-go-worker docker-build install-cert-manager helm-install-namespaces helm-add-repos helm-install-otel-operator helm-install-otel-gateway-collector helm-install-otel-lgtm clean-conflicting-resources helm-install-otelbrot-app helm-deploy helm-upgrade helm-cleanup helm-cleanup-all frontend-dev orchestrator-run worker-run redis-run java-test java-test-debug kind-setup kind-deploy help
 
 # Run all tests
 test: test-frontend test-orchestrator test-go-worker
@@ -89,18 +89,13 @@ helm-install-namespaces: helm-add-repos
 	helm upgrade --install otelbrot-namespaces ./helm-charts/namespaces
 	@echo "Namespaces installed successfully."
 
-# Create Honeycomb API key secret
-create-honeycomb-secret: helm-install-namespaces
-	@if [ -z "$(HONEYCOMB_API_KEY)" ]; then \
-		echo "Error: HONEYCOMB_API_KEY environment variable is not set"; \
-		exit 1; \
-	fi
-	@echo "Creating Honeycomb API key secret..."
-	kubectl create secret generic honeycomb-api-key \
-		--namespace otelbrot \
-		--from-literal=api-key=$(HONEYCOMB_API_KEY) \
-		--dry-run=client -o yaml | kubectl apply -f -
-	@echo "Honeycomb API key secret created successfully."
+# Install OTEL-LGTM (All-in-one container) with Helm
+helm-install-otel-lgtm: helm-add-repos helm-install-namespaces
+	@echo "Installing OTEL-LGTM all-in-one container..."
+	helm upgrade --install otel-lgtm grafana/otel-lgtm \
+		--namespace monitoring \
+		-f helm-charts/otel-lgtm-values.yaml
+	@echo "OTEL-LGTM installed successfully."
 
 # Add Helm repositories
 helm-add-repos:
@@ -122,20 +117,13 @@ helm-install-otel-operator: helm-add-repos install-cert-manager
 	@echo "OpenTelemetry Operator installed successfully."
 
 # Install OpenTelemetry Gateway Collector (DaemonSet) with Helm
-helm-install-otel-gateway-collector: helm-add-repos helm-install-namespaces create-honeycomb-secret
+helm-install-otel-gateway-collector: helm-add-repos helm-install-namespaces
 	@echo "Installing OpenTelemetry Gateway Collector (DaemonSet)..."
 	helm upgrade --install otel-gateway-collector open-telemetry/opentelemetry-collector \
 		--namespace otelbrot \
 		-f helm-charts/otel-gateway-collector-values.yaml
 	@echo "OpenTelemetry Gateway Collector (DaemonSet) installed successfully."
 
-# Install LGTM Distributed with Helm
-helm-install-lgtm-distributed: helm-add-repos helm-install-namespaces
-	@echo "Installing LGTM Distributed..."
-	helm upgrade --install lgtm grafana/lgtm-distributed \
-		--namespace monitoring \
-		-f helm-charts/lgtm-distributed-values.yaml
-	@echo "LGTM Distributed installed successfully."
 
 
 # Clean up any conflicting resources
@@ -159,25 +147,25 @@ helm-upgrade:
 	@echo "✓ Otelbrot application upgraded successfully."
 
 # Deploy everything with Helm
-helm-deploy: docker-build helm-install-namespaces helm-install-otel-operator helm-install-lgtm-distributed helm-install-otel-gateway-collector helm-install-otelbrot-app
+helm-deploy: docker-build helm-install-namespaces helm-install-otel-operator helm-install-otel-lgtm helm-install-otel-gateway-collector helm-install-otelbrot-app
 	@echo "✓ Deployment complete. Use 'kubectl get pods -n otelbrot' to check status."
 
 # Clean up Helm releases
 helm-cleanup:
 	@echo "Cleaning up Helm releases..."
 	-helm uninstall otel-gateway-collector --namespace otelbrot
-	-helm uninstall lgtm --namespace monitoring
+	-helm uninstall otel-lgtm --namespace monitoring
 	-helm uninstall otelbrot-app --namespace otelbrot
 	-kubectl delete jobs --all -n otelbrot --ignore-not-found
 	-kubectl delete pods --all -n otelbrot --ignore-not-found
 	-kubectl delete pvc --all -n otelbrot --ignore-not-found
+	-kubectl delete pvc --all -n monitoring --ignore-not-found
 	@echo "Helm releases and application resources cleaned up."
 
 # Clean up all Helm releases including operator and namespace
 helm-cleanup-all: helm-cleanup
 	@echo "Cleaning up all Helm releases including operator..."
 	-helm uninstall opentelemetry-operator --namespace opentelemetry-operator-system
-	-kubectl delete secret honeycomb-api-key -n otelbrot --ignore-not-found
 	-helm uninstall otelbrot-namespaces
 	@echo "All resources cleaned up. Namespaces will be deleted once resources are removed."
 
@@ -223,6 +211,25 @@ java-test-debug:
 	@cd orchestrator && ./mvnw test -Dtest="$(TEST_CLASS)" -Dmaven.surefire.debug -q || { echo "❌ Java test in debug mode failed"; exit 1; }
 	@echo "✓ Java test in debug mode completed successfully."
 
+# Set up kind cluster for local development
+kind-setup:
+	@echo "Setting up kind cluster for Otelbrot..."
+	@./scripts/setup-kind.sh
+	@echo "✓ Kind cluster setup completed."
+
+# Deploy the application to a kind cluster
+kind-deploy: docker-build
+	@echo "Deploying to kind cluster..."
+	@kind load docker-image otelbrot/frontend:latest otelbrot/orchestrator:latest otelbrot/go-worker:latest --name otelbrot
+	@helm upgrade --install otelbrot-app ./helm-charts/otelbrot-app \
+		--namespace otelbrot \
+		-f ./helm-charts/otelbrot-app/values-kind.yaml
+	@echo "✓ Deployment to kind cluster completed."
+	@echo "You can access the application at: http://otelbrot.local"
+	@echo "You can access the metrics dashboard at: http://metrics.otelbrot.local"
+	@echo "Note: You may need to add these hostnames to your /etc/hosts file if not done already:"
+	@echo "  127.0.0.1 otelbrot.local metrics.otelbrot.local"
+
 # Show help
 help:
 	@echo "Usage: make [target]"
@@ -255,15 +262,16 @@ help:
 	@echo "  helm-install-otelbrot-app       Install/Upgrade otelbrot app using Helm"
 	@echo "  helm-cleanup                    Clean up application resources"
 	@echo "  helm-cleanup-all                Clean up everything including operators"
+	@echo "  kind-setup                      Set up a kind cluster with Nginx Ingress for local development"
+	@echo "  kind-deploy                     Deploy the application to a kind cluster with resource limits optimized for local development"
 	@echo ""
 	@echo "Individual Helm Components:"
 	@echo "  install-cert-manager            Install cert-manager in Kubernetes"
-	@echo "  create-honeycomb-secret         Create secret for Honeycomb API key"
 	@echo "  helm-install-namespaces         Create namespaces using Helm"
 	@echo "  helm-add-repos                  Add Helm repositories"
 	@echo "  helm-install-otel-operator      Install OpenTelemetry Operator using Helm"
 	@echo "  helm-install-otel-gateway-collector Install gateway collector (DaemonSet) using Helm"
-	@echo "  helm-install-lgtm-distributed   Install LGTM Distributed using Helm"
+	@echo "  helm-install-otel-lgtm          Install OTEL-LGTM all-in-one container using Helm"
 	@echo ""
 	@echo "  clean-conflicting-resources     Clean up resources that conflict with Helm"
 	@echo "  help                            Show this help message"

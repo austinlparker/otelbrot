@@ -35,7 +35,7 @@ data:
             exporter:
               otlp:
                 protocol: http/protobuf
-                endpoint: http://otelbrot-collector.{{ .Release.Namespace }}.svc.cluster.local:4318/v1/traces
+                endpoint: http://{{ .Release.Name }}-otel-lgtm.{{ .Release.Namespace }}.svc.cluster.local:4318/v1/traces
                 compression: gzip
                 timeout: 10000
                 headers: []
@@ -56,7 +56,7 @@ data:
             exporter:
               otlp:
                 protocol: http/protobuf
-                endpoint: http://otelbrot-collector.{{ .Release.Namespace }}.svc.cluster.local:4318/v1/metrics
+                endpoint: http://{{ .Release.Name }}-otel-lgtm.{{ .Release.Namespace }}.svc.cluster.local:4318/v1/metrics
                 compression: gzip
                 timeout: 10000
                 headers: []
@@ -70,7 +70,7 @@ data:
             exporter:
               otlp:
                 protocol: http/protobuf
-                endpoint: http://otelbrot-collector.{{ .Release.Namespace }}.svc.cluster.local:4318/v1/logs
+                endpoint: http://{{ .Release.Name }}-otel-lgtm.{{ .Release.Namespace }}.svc.cluster.local:4318/v1/logs
                 compression: gzip
                 timeout: 10000
                 headers: []

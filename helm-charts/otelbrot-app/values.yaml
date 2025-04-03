@@ -4,6 +4,56 @@
 nameOverride: ""
 fullnameOverride: ""
 
+# Ingress configuration for service access
+ingress:
+  enabled: true
+  className: "nginx"
+  frontendHost: "otelbrot.local"
+  metricsHost: "metrics.otelbrot.local"
+  annotations:
+    # These default settings work well with kind + nginx-ingress
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$1
+    # Uncomment to enable sticky sessions if needed
+    # nginx.ingress.kubernetes.io/affinity: "cookie"
+    # nginx.ingress.kubernetes.io/session-cookie-name: "route"
+    # nginx.ingress.kubernetes.io/session-cookie-expires: "172800"
+    # nginx.ingress.kubernetes.io/session-cookie-max-age: "172800"
+  tls: []
+  # - secretName: otelbrot-tls
+  #   hosts:
+  #     - otelbrot.local
+  #     - metrics.otelbrot.local
+
+# OTEL-LGTM all-in-one monitoring container
+otelLgtm:
+  enabled: true
+  image:
+    repository: grafana/otel-lgtm
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    ports:
+      otelGrpc:
+        port: 4317
+      otelHttp:
+        port: 4318
+      grafana:
+        port: 3000
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+    requests:
+      cpu: 500m
+      memory: 2Gi
+  persistence:
+    enabled: true
+    size: 10Gi
+    accessMode: ReadWriteOnce
+    storageClass: ""
+
 redis:
   enabled: true
   image:
@@ -124,10 +174,6 @@ collector:
     exporters:
       debug:
         verbosity: normal
-      otlp_gateway:
-        endpoint: otel-gateway-collector.otelbrot.svc.cluster.local:4317
-        tls:
-          insecure: true
   service:
     type: ClusterIP
     ports:

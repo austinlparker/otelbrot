@@ -29,11 +29,6 @@ podAnnotations:
   prometheus.io/port: "8888"
 
 extraEnvs:
-  - name: HONEYCOMB_API_KEY
-    valueFrom:
-      secretKeyRef:
-        name: honeycomb-api-key
-        key: api-key
   - name: K8S_NODE_NAME
     valueFrom:
       fieldRef:
@@ -111,15 +106,9 @@ config:
 
   exporters:
     otlphttp/lgtm:
-      endpoint: http://lgtm-gateway.monitoring.svc.cluster.local:4318
+      endpoint: http://otelbrot-otel-lgtm.otelbrot.svc.cluster.local:4318
       tls:
         insecure: true
-      headers:
-        X-Scope-OrgID: "1"
-    otlp/honeycomb:
-      endpoint: api.honeycomb.io:443
-      headers:
-        x-honeycomb-team: ${env:HONEYCOMB_API_KEY}
     debug:
       verbosity: detailed
 
@@ -129,12 +118,12 @@ config:
       metrics:
         receivers: [otlp]
         processors: [memory_limiter, resource, batch]
-        exporters: [otlphttp/lgtm, otlp/honeycomb, debug]
+        exporters: [otlphttp/lgtm, debug]
       traces:
         receivers: [otlp]
         processors: [memory_limiter, resource, batch]
-        exporters: [otlphttp/lgtm, otlp/honeycomb, debug]
+        exporters: [otlphttp/lgtm, debug]
       logs:
         receivers: [otlp]
         processors: [memory_limiter, resource, batch]
-        exporters: [otlphttp/lgtm, otlp/honeycomb, debug]
+        exporters: [otlphttp/lgtm, debug]
