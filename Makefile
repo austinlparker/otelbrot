@@ -89,13 +89,10 @@ helm-install-namespaces: helm-add-repos
 	helm upgrade --install otelbrot-namespaces ./helm-charts/namespaces
 	@echo "Namespaces installed successfully."
 
-# Install OTEL-LGTM (All-in-one container) with Helm
+# Install OTEL-LGTM (All-in-one container) via otelbrot-app chart
 helm-install-otel-lgtm: helm-add-repos helm-install-namespaces
-	@echo "Installing OTEL-LGTM all-in-one container..."
-	helm upgrade --install otel-lgtm grafana/otel-lgtm \
-		--namespace monitoring \
-		-f helm-charts/otel-lgtm-values.yaml
-	@echo "OTEL-LGTM installed successfully."
+	@echo "OTEL-LGTM is now included in the otelbrot-app chart - no separate installation required."
+	@echo "It will be automatically installed with 'helm-install-otelbrot-app'."
 
 # Add Helm repositories
 helm-add-repos:
@@ -134,32 +131,34 @@ clean-conflicting-resources:
 
 # Install otelbrot application with Helm
 helm-install-otelbrot-app: docker-build helm-install-namespaces clean-conflicting-resources helm-install-otel-operator
-	@echo "Installing otelbrot application..."
+	@echo "Installing otelbrot application with OTEL-LGTM..."
 	@helm upgrade --install otelbrot-app ./helm-charts/otelbrot-app \
-		--namespace otelbrot >/dev/null 2>&1 || { echo "❌ Otelbrot application installation failed"; exit 1; }
-	@echo "✓ Otelbrot application installed successfully."
+		--namespace otelbrot \
+		--set otelLgtm.enabled=true \
+		>/dev/null 2>&1 || { echo "❌ Otelbrot application installation failed"; exit 1; }
+	@echo "✓ Otelbrot application with OTEL-LGTM installed successfully."
 
 # Upgrade otelbrot application with Helm
 helm-upgrade:
 	@echo "Upgrading otelbrot application..."
 	@helm upgrade otelbrot-app ./helm-charts/otelbrot-app \
-		--namespace otelbrot >/dev/null 2>&1 || { echo "❌ Otelbrot application upgrade failed"; exit 1; }
+		--namespace otelbrot \
+		--set otelLgtm.enabled=true \
+		>/dev/null 2>&1 || { echo "❌ Otelbrot application upgrade failed"; exit 1; }
 	@echo "✓ Otelbrot application upgraded successfully."
 
 # Deploy everything with Helm
-helm-deploy: docker-build helm-install-namespaces helm-install-otel-operator helm-install-otel-lgtm helm-install-otel-gateway-collector helm-install-otelbrot-app
+helm-deploy: docker-build helm-install-namespaces helm-install-otel-operator helm-install-otel-gateway-collector helm-install-otelbrot-app
 	@echo "✓ Deployment complete. Use 'kubectl get pods -n otelbrot' to check status."
 
 # Clean up Helm releases
 helm-cleanup:
 	@echo "Cleaning up Helm releases..."
 	-helm uninstall otel-gateway-collector --namespace otelbrot
-	-helm uninstall otel-lgtm --namespace monitoring
 	-helm uninstall otelbrot-app --namespace otelbrot
 	-kubectl delete jobs --all -n otelbrot --ignore-not-found
 	-kubectl delete pods --all -n otelbrot --ignore-not-found
 	-kubectl delete pvc --all -n otelbrot --ignore-not-found
-	-kubectl delete pvc --all -n monitoring --ignore-not-found
 	@echo "Helm releases and application resources cleaned up."
 
 # Clean up all Helm releases including operator and namespace
@@ -220,9 +219,10 @@ kind-setup:
 # Deploy the application to a kind cluster
 kind-deploy: docker-build
 	@echo "Deploying to kind cluster..."
-	@kind load docker-image otelbrot/frontend:latest otelbrot/orchestrator:latest otelbrot/go-worker:latest --name otelbrot
+	@kind load docker-image otelbrot/frontend:latest otelbrot/orchestrator:latest otelbrot/go-worker:latest grafana/otel-lgtm:latest --name otelbrot
 	@helm upgrade --install otelbrot-app ./helm-charts/otelbrot-app \
 		--namespace otelbrot \
+		--set otelLgtm.enabled=true \
 		-f ./helm-charts/otelbrot-app/values-kind.yaml
 	@echo "✓ Deployment to kind cluster completed."
 	@echo "You can access the application at: http://otelbrot.local"
