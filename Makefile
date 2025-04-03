@@ -68,7 +68,9 @@ docker-build: build
 	docker build -t otelbrot/frontend:latest -f ./frontend/Dockerfile ./frontend
 	docker build -t otelbrot/orchestrator:latest -f ./orchestrator/Dockerfile .
 	docker build -t otelbrot/go-worker:latest -f ./go-worker/Dockerfile ./go-worker
-	@echo "Docker images built."
+	@echo "Pulling required external images..."
+	docker pull grafana/otel-lgtm:latest
+	@echo "Docker images built and pulled."
 
 # Install cert-manager
 install-cert-manager:
