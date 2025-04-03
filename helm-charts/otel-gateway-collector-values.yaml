@@ -106,7 +106,7 @@ config:
 
   exporters:
     otlphttp/lgtm:
-      endpoint: http://otelbrot-otel-lgtm.otelbrot.svc.cluster.local:4318
+      endpoint: http://otelbrot-app-otel-lgtm.otelbrot.svc.cluster.local:4318
       tls:
         insecure: true
     debug:
