@@ -98,8 +98,8 @@ nodes:
     extraMounts:
       - hostPath: /tmp/kind-control-plane
         containerPath: /var/lib/containerd
-  # Add multiple worker nodes to utilize the powerful hardware - optimized for 128 cores
-  # Worker node 1-4: Generic purpose (apps, monitoring, etc.)
+  # Add just 2 worker nodes optimized for the powerful hardware
+  # Worker node 1: General purpose (apps, monitoring, etc.)
   - role: worker
     kubeadmConfigPatches:
       - |
@@ -109,46 +109,10 @@ nodes:
             node-labels: "node.kubernetes.io/worker=true,workload=app"
             system-reserved: "memory=4Gi,cpu=4"
             kube-reserved: "memory=4Gi,cpu=4"
-            max-pods: "220"
+            max-pods: "500"
             eviction-hard: "memory.available<4Gi"
             feature-gates: "HPAScaleToZero=true"
-  - role: worker
-    kubeadmConfigPatches:
-      - |
-        kind: JoinConfiguration
-        nodeRegistration:
-          kubeletExtraArgs:
-            node-labels: "node.kubernetes.io/worker=true,workload=app"
-            system-reserved: "memory=4Gi,cpu=4"
-            kube-reserved: "memory=4Gi,cpu=4"
-            max-pods: "220"
-            eviction-hard: "memory.available<4Gi"
-            feature-gates: "HPAScaleToZero=true"
-  - role: worker
-    kubeadmConfigPatches:
-      - |
-        kind: JoinConfiguration
-        nodeRegistration:
-          kubeletExtraArgs:
-            node-labels: "node.kubernetes.io/worker=true,workload=app"
-            system-reserved: "memory=4Gi,cpu=4"
-            kube-reserved: "memory=4Gi,cpu=4"
-            max-pods: "220"
-            eviction-hard: "memory.available<4Gi"
-            feature-gates: "HPAScaleToZero=true"
-  - role: worker
-    kubeadmConfigPatches:
-      - |
-        kind: JoinConfiguration
-        nodeRegistration:
-          kubeletExtraArgs:
-            node-labels: "node.kubernetes.io/worker=true,workload=app"
-            system-reserved: "memory=4Gi,cpu=4"
-            kube-reserved: "memory=4Gi,cpu=4"
-            max-pods: "220"
-            eviction-hard: "memory.available<4Gi"
-            feature-gates: "HPAScaleToZero=true"
-  # Worker node 5-12: Dedicated to fractal calculation jobs
+  # Worker node 2: Primarily for compute workloads
   - role: worker
     kubeadmConfigPatches:
       - |
@@ -158,91 +122,7 @@ nodes:
             node-labels: "node.kubernetes.io/worker=true,workload=compute"
             system-reserved: "memory=2Gi,cpu=2"
             kube-reserved: "memory=2Gi,cpu=2"
-            max-pods: "220"
-            eviction-hard: "memory.available<2Gi"
-            feature-gates: "HPAScaleToZero=true"
-  - role: worker
-    kubeadmConfigPatches:
-      - |
-        kind: JoinConfiguration
-        nodeRegistration:
-          kubeletExtraArgs:
-            node-labels: "node.kubernetes.io/worker=true,workload=compute"
-            system-reserved: "memory=2Gi,cpu=2"
-            kube-reserved: "memory=2Gi,cpu=2"
-            max-pods: "220"
-            eviction-hard: "memory.available<2Gi"
-            feature-gates: "HPAScaleToZero=true"
-  - role: worker
-    kubeadmConfigPatches:
-      - |
-        kind: JoinConfiguration
-        nodeRegistration:
-          kubeletExtraArgs:
-            node-labels: "node.kubernetes.io/worker=true,workload=compute"
-            system-reserved: "memory=2Gi,cpu=2"
-            kube-reserved: "memory=2Gi,cpu=2"
-            max-pods: "220"
-            eviction-hard: "memory.available<2Gi"
-            feature-gates: "HPAScaleToZero=true"
-  - role: worker
-    kubeadmConfigPatches:
-      - |
-        kind: JoinConfiguration
-        nodeRegistration:
-          kubeletExtraArgs:
-            node-labels: "node.kubernetes.io/worker=true,workload=compute"
-            system-reserved: "memory=2Gi,cpu=2"
-            kube-reserved: "memory=2Gi,cpu=2"
-            max-pods: "220"
-            eviction-hard: "memory.available<2Gi"
-            feature-gates: "HPAScaleToZero=true"
-  - role: worker
-    kubeadmConfigPatches:
-      - |
-        kind: JoinConfiguration
-        nodeRegistration:
-          kubeletExtraArgs:
-            node-labels: "node.kubernetes.io/worker=true,workload=compute"
-            system-reserved: "memory=2Gi,cpu=2"
-            kube-reserved: "memory=2Gi,cpu=2"
-            max-pods: "220"
-            eviction-hard: "memory.available<2Gi"
-            feature-gates: "HPAScaleToZero=true"
-  - role: worker
-    kubeadmConfigPatches:
-      - |
-        kind: JoinConfiguration
-        nodeRegistration:
-          kubeletExtraArgs:
-            node-labels: "node.kubernetes.io/worker=true,workload=compute"
-            system-reserved: "memory=2Gi,cpu=2"
-            kube-reserved: "memory=2Gi,cpu=2"
-            max-pods: "220"
-            eviction-hard: "memory.available<2Gi"
-            feature-gates: "HPAScaleToZero=true"
-  - role: worker
-    kubeadmConfigPatches:
-      - |
-        kind: JoinConfiguration
-        nodeRegistration:
-          kubeletExtraArgs:
-            node-labels: "node.kubernetes.io/worker=true,workload=compute"
-            system-reserved: "memory=2Gi,cpu=2"
-            kube-reserved: "memory=2Gi,cpu=2"
-            max-pods: "220"
-            eviction-hard: "memory.available<2Gi"
-            feature-gates: "HPAScaleToZero=true"
-  - role: worker
-    kubeadmConfigPatches:
-      - |
-        kind: JoinConfiguration
-        nodeRegistration:
-          kubeletExtraArgs:
-            node-labels: "node.kubernetes.io/worker=true,workload=compute"
-            system-reserved: "memory=2Gi,cpu=2"
-            kube-reserved: "memory=2Gi,cpu=2"
-            max-pods: "220"
+            max-pods: "500"
             eviction-hard: "memory.available<2Gi"
             feature-gates: "HPAScaleToZero=true"
 EOF
