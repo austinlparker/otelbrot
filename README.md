@@ -99,12 +99,11 @@ make kind-deploy
 
 The configuration is optimized for high-performance ARM64 machines with 128 cores and hundreds of GB of memory:
 
-- 3-node cluster (1 control plane + 2 workers) with optimized settings
-- Support for up to 500 concurrent worker pods
+- Standard 3-node kind cluster (1 control plane + 2 workers)
+- Support for hundreds of concurrent worker pods through the orchestrator
 - Enhanced Redis configuration for high concurrency
-- Kubernetes API server optimized for large clusters
 - Increased thread pools and queue capacity in the orchestrator
-- Expanded max-pods limits on all nodes (500 pods per node)
+- Exposed ports for easy access to the frontend and monitoring
 
 After deployment, the application will be available at:
 - Frontend: http://otelbrot.local

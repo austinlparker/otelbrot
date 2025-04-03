@@ -39,51 +39,12 @@ if kind get clusters | grep -q "${CLUSTER_NAME}"; then
     echo -e "${YELLOW}Cluster '${CLUSTER_NAME}' already exists. Skipping creation.${NC}"
 else
     echo -e "${GREEN}Creating kind cluster with ingress support...${NC}"
-    # Create a kind config file with extraPortMappings and optimized for powerful ARM64 machine with 128 cores
+    # Create a simplified kind config file with minimal required settings for ARM64
     cat <<EOF > kind-config.yaml
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
-# Optimize for ARM64 performance
-networking:
-  apiServerAddress: "127.0.0.1"
-  apiServerPort: 6443
-  podSubnet: "10.244.0.0/16"
-  serviceSubnet: "10.96.0.0/12"
-kubeadmConfigPatches:
-  - |
-    kind: ClusterConfiguration
-    apiServer:
-      extraArgs:
-        enable-admission-plugins: "NodeRestriction"
-        default-watch-cache-size: "1000"
-        default-watch-cache: "true"
-        feature-gates: "HPAScaleToZero=true"
-        max-requests-inflight: "1500"
-        max-mutating-requests-inflight: "500"
-    controllerManager:
-      extraArgs:
-        large-cluster-size-threshold: "100"
-        node-monitor-grace-period: "10s"
-        node-cidr-mask-size-ipv4: "24"
-        feature-gates: "HPAScaleToZero=true"
-        concurrent-gc-syncs: "40"
-        pod-eviction-timeout: "3m"
-    scheduler:
-      extraArgs:
-        feature-gates: "HPAScaleToZero=true"
 nodes:
   - role: control-plane
-    kubeadmConfigPatches:
-      - |
-        kind: InitConfiguration
-        nodeRegistration:
-          kubeletExtraArgs:
-            node-labels: "ingress-ready=true"
-            system-reserved: "memory=8Gi,cpu=8"
-            kube-reserved: "memory=8Gi,cpu=8"
-            max-pods: "220"
-            eviction-hard: "memory.available<8Gi"
-            feature-gates: "HPAScaleToZero=true"
     extraPortMappings:
       - containerPort: 80
         hostPort: 80
@@ -94,41 +55,24 @@ nodes:
       - containerPort: 3000
         hostPort: 3000
         protocol: TCP
-    # Add resource limits for control-plane
-    extraMounts:
-      - hostPath: /tmp/kind-control-plane
-        containerPath: /var/lib/containerd
-  # Add just 2 worker nodes optimized for the powerful hardware
-  # Worker node 1: General purpose (apps, monitoring, etc.)
   - role: worker
-    kubeadmConfigPatches:
-      - |
-        kind: JoinConfiguration
-        nodeRegistration:
-          kubeletExtraArgs:
-            node-labels: "node.kubernetes.io/worker=true,workload=app"
-            system-reserved: "memory=4Gi,cpu=4"
-            kube-reserved: "memory=4Gi,cpu=4"
-            max-pods: "500"
-            eviction-hard: "memory.available<4Gi"
-            feature-gates: "HPAScaleToZero=true"
-  # Worker node 2: Primarily for compute workloads
   - role: worker
-    kubeadmConfigPatches:
-      - |
-        kind: JoinConfiguration
-        nodeRegistration:
-          kubeletExtraArgs:
-            node-labels: "node.kubernetes.io/worker=true,workload=compute"
-            system-reserved: "memory=2Gi,cpu=2"
-            kube-reserved: "memory=2Gi,cpu=2"
-            max-pods: "500"
-            eviction-hard: "memory.available<2Gi"
-            feature-gates: "HPAScaleToZero=true"
 EOF
 
-    # Create the cluster
-    kind create cluster --name "${CLUSTER_NAME}" --config=kind-config.yaml
+    # Create the cluster with verbose logging
+    echo -e "${GREEN}Creating cluster with verbose logging...${NC}"
+    kind create cluster --name "${CLUSTER_NAME}" --config=kind-config.yaml --verbosity 999 || {
+        echo -e "${RED}Cluster creation failed. Checking Docker container logs...${NC}"
+        docker ps -a | grep "${CLUSTER_NAME}"
+        CONTAINER_ID=$(docker ps -a --filter name="${CLUSTER_NAME}-control-plane" --format "{{.ID}}")
+        if [ -n "$CONTAINER_ID" ]; then
+            echo -e "${YELLOW}Control plane container logs:${NC}"
+            docker logs "$CONTAINER_ID"
+        else
+            echo -e "${RED}Control plane container not found${NC}"
+        fi
+        exit 1
+    }
     rm kind-config.yaml
 fi
 
