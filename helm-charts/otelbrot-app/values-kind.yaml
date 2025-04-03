@@ -1,6 +1,27 @@
 # Values override for kind deployment
 # These settings are optimized for running in a kind cluster
 
+# Set imagePullPolicy to Never for all components to use locally loaded images
+orchestrator:
+  image:
+    pullPolicy: Never
+
+frontend:
+  image:
+    pullPolicy: Never
+
+otelLgtm:
+  image:
+    pullPolicy: Never
+
+redis:
+  image:
+    pullPolicy: Never
+
+collector:
+  image:
+    pullPolicy: Never
+
 # Enable ingress resources with appropriate hostnames for local development
 ingress:
   enabled: true
