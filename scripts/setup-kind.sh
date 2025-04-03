@@ -76,15 +76,15 @@ EOF
     rm kind-config.yaml
 fi
 
-# Install Nginx Ingress Controller
+# Install Nginx Ingress Controller using the latest method from the kind documentation
 echo -e "${GREEN}Installing NGINX Ingress Controller...${NC}"
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v${INGRESS_NGINX_VERSION}/deploy/static/provider/kind/deploy.yaml
+kubectl apply -f https://kind.sigs.k8s.io/examples/ingress/deploy-ingress-nginx.yaml
 
 echo -e "${GREEN}Waiting for ingress controller to be ready...${NC}"
 kubectl wait --namespace ingress-nginx \
   --for=condition=ready pod \
   --selector=app.kubernetes.io/component=controller \
-  --timeout=90s
+  --timeout=120s
 
 # Set up hosts entries
 echo -e "${YELLOW}Adding local hosts entries${NC}"
